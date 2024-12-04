@@ -31,7 +31,7 @@ A Python-based market analysis tool that provides technical analysis, market sta
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/mprestonsparks/market-analysis.git
 cd market-analysis
 ```
 
