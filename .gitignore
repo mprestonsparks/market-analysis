@@ -1,0 +1,138 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+.python-version
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Docker
+.docker/
+docker-compose.override.yml
+*.env
+.env.*
+!.env.example
+
+# FastAPI
+*.log
+logs/
+log/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Database
+*.sqlite3
+*.db
+
+# Development
+.local/
+local_settings.py
+*.local.*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation
+docs/_build/
+site/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Redis
+*.rdb
+dump.rdb
+
+# RabbitMQ
+rabbitmq/*
+*.pid
+*.rabbitmq-dump
+
+# Data Science and ML
+*.pkl
+*.joblib
+*.model
+.pytest_cache/
+model_checkpoints/
+*.npy
+*.npz
+.ipynb
+
+# Finance data cache
+yfinance/
+*.yfinance
+*-yf-data/
+
+# Matplotlib
+.matplotlib/
+*.png
+*.pdf
+*.svg
+!assets/*.png  # Keep tracked images in assets folder
+!assets/*.svg  # Keep tracked images in assets folder
+
+# Redis
+*.rdb
+
+# Elastic Beanstalk
+.elasticbeanstalk/
