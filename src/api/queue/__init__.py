@@ -1,0 +1,3 @@
+"""
+Message queue integration module.
+"""

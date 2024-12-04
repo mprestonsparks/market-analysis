@@ -6,6 +6,18 @@ scipy>=1.7.0
 matplotlib>=3.4.0
 ta>=0.7.0
 ratelimit>=2.2.1
-python-dotenv>=0.19.0
 asyncio>=3.4.3
-tkinter>=8.6
+
+# API and Message Queue
+fastapi>=0.68.0
+uvicorn>=0.15.0
+redis>=4.0.0
+pika>=1.2.0
+aio-pika>=8.0.0
+pydantic>=1.8.0
+asyncio>=3.4.3
+websockets>=10.0
+pytest>=7.0.0
+pytest-asyncio>=0.16.0
+httpx>=0.24.0  # Required for TestClient
+starlette>=0.14.2
