@@ -125,12 +125,12 @@ class MarketAnalyzer:
             raise ValueError("No data available. Call fetch_data first.")
             
         # Calculate features for PCA
-        returns = self.data['Close'].pct_change()
+        returns = self.data['close'].pct_change()
         volatility = returns.rolling(window=20).std()
-        volume = self.data['Volume'] / self.data['Volume'].rolling(window=50).mean()
+        volume = self.data['volume'] / self.data['volume'].rolling(window=50).mean()
         
         # Calculate trend strength using price momentum and moving average crossovers
-        price = self.data['Close']
+        price = self.data['close']
         sma_20 = price.rolling(window=20).mean()
         sma_50 = price.rolling(window=50).mean()
         trend_strength = ((price - sma_20) / price + (sma_20 - sma_50) / sma_20).fillna(0)
@@ -189,14 +189,14 @@ class MarketAnalyzer:
             
         # RSI
         rsi = RSIIndicator(
-            close=self.data['Close'],
+            close=self.data['close'],
             window=config['rsi']['window']
         )
         self.technical_indicators['rsi'] = rsi.rsi()
         
         # MACD
         macd = MACD(
-            close=self.data['Close'],
+            close=self.data['close'],
             window_fast=config['macd']['fast_period'],
             window_slow=config['macd']['slow_period'],
             window_sign=config['macd']['signal_period']
@@ -206,9 +206,9 @@ class MarketAnalyzer:
         
         # Stochastic
         stoch = StochasticOscillator(
-            high=self.data['High'],
-            low=self.data['Low'],
-            close=self.data['Close'],
+            high=self.data['high'],
+            low=self.data['low'],
+            close=self.data['close'],
             window=config['stochastic']['k_period'],
             smooth_window=config['stochastic']['d_period']
         )
@@ -217,7 +217,7 @@ class MarketAnalyzer:
         
         # Bollinger Bands
         bb = BollingerBands(
-            close=self.data['Close'],
+            close=self.data['close'],
             window=config['bollinger']['window'],
             window_dev=config['bollinger']['num_std']
         )
@@ -294,7 +294,7 @@ class MarketAnalyzer:
             composite_signals[i] = weighted_signal / total_weight
             
             # Calculate confidence
-            volume_scale = self.data['Volume'].iloc[i] / self.data['Volume'].iloc[i-20:i].mean()
+            volume_scale = self.data['volume'].iloc[i] / self.data['volume'].iloc[i-20:i].mean()
             confidence_scale = 1 + 0.2 * volume_scale  # Simple volume-based scaling
             confidence_values[i] = confidence_scale * min(
                 max(abs(composite_signals[i]), self.indicator_config['min_signal_confidence']),
@@ -432,7 +432,7 @@ class MarketAnalyzer:
         """Plot price and volume with state backgrounds."""
         # Plot price
         ax2 = ax.twinx()
-        ax.plot(self.data.index, self.data['Close'], 'b-', label='Price', zorder=2)
+        ax.plot(self.data.index, self.data['close'], 'b-', label='Price', zorder=2)
         
         # Add state backgrounds if available
         if show_states and hasattr(self, 'states'):
@@ -446,7 +446,7 @@ class MarketAnalyzer:
                               label=f'State {state}')
         
         # Plot volume
-        volume_normalized = self.data['Volume'] / self.data['Volume'].max()
+        volume_normalized = self.data['volume'] / self.data['volume'].max()
         ax2.fill_between(self.data.index, 0, volume_normalized, color='gray', alpha=0.3, label='Volume')
         
         ax.set_title('Price and Volume with Market States')
@@ -494,7 +494,7 @@ class MarketAnalyzer:
             
         elif indicator_type == 'Bollinger Bands':
             # Plot Bollinger Bands
-            ax.plot(self.data.index, self.data['Close'], 'k-', label='Price', alpha=0.5)
+            ax.plot(self.data.index, self.data['close'], 'k-', label='Price', alpha=0.5)
             ax.plot(self.data.index, self.technical_indicators['bb_high'], 'r-', label='Upper Band')
             ax.plot(self.data.index, self.technical_indicators['bb_mid'], 'b-', label='Middle Band')
             ax.plot(self.data.index, self.technical_indicators['bb_low'], 'g-', label='Lower Band')
@@ -585,4 +585,7 @@ class MarketAnalyzer:
         
     def fetch_data(self, start_date: datetime, end_date: datetime):
         """Fetch market data for analysis."""
-        self.data = fetch_market_data(self.symbol, start_date, end_date)
+        data = fetch_market_data(self.symbol, start_date, end_date)
+        # Standardize column names
+        data.columns = [col.lower() for col in data.columns]
+        self.data = data

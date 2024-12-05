@@ -11,8 +11,20 @@ services:
       - PYTHONPATH=/app
     volumes:
       - .:/app
-    command: python -m pytest tests/core/ -v
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - market_analysis_net
 
-volumes:
-  redis_data:
-  rabbitmq_data:
+  test:
+    build: .
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+    command: python -m pytest tests/ -v
+    networks:
+      - market_analysis_net
+
+networks:
+  market_analysis_net:
+    driver: bridge

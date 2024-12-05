@@ -1,20 +1,24 @@
 """
 FastAPI application implementation for market analysis.
 """
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from typing import Dict, Tuple
 import logging
 from datetime import datetime, timezone, timedelta
-import uuid
-import json
+import pandas as pd
+import numpy as np
 
-from src.api.models import MarketDataRequest, AnalysisResponse
 from src.market_analysis import MarketAnalyzer
-from src.api.queue.queue_manager import QueueManager
-from .middleware.rate_limiter import RateLimiter
-from .middleware.error_handler import ErrorHandler
-from .websocket.handlers import handle_market_subscription
+from src.api.models.analysis import AnalysisRequest, AnalysisResult, TechnicalIndicator, MarketState, TradingSignal
+
+def clean_float(value):
+    """Convert float to JSON-serializable value, handling NaN and infinite values."""
+    if isinstance(value, (int, float)):
+        if np.isnan(value) or np.isinf(value):
+            return None
+        return float(value)
+    return value
 
 # Configure logging
 logging.basicConfig(
@@ -30,11 +34,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Initialize global queue manager
-queue_manager = None
-
-# Add middleware in the correct order
-app.add_middleware(ErrorHandler)
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Update this in production
@@ -43,120 +43,172 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def get_queue_manager() -> QueueManager:
-    """
-    FastAPI dependency for getting the queue manager instance.
-    
-    Returns:
-        QueueManager: The global queue manager instance
-    """
-    if queue_manager is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Queue manager not initialized"
-        )
-    return queue_manager
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize connections and middleware on startup."""
-    global queue_manager
-    try:
-        # Initialize queue manager
-        queue_manager = QueueManager()
-        await queue_manager.initialize_rabbitmq()
-        logger.info("Successfully initialized queue connections")
-        
-        # Add rate limiter after Redis connection is established
-        app.add_middleware(
-            RateLimiter,
-            redis_client=queue_manager.redis_client.redis_client,
-            rate_limit=100,  # 100 requests per minute
-            window=60  # 1 minute window
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to initialize connections: {str(e)}")
-        raise
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup services on shutdown."""
-    await queue_manager.cleanup()
+# Store analyzer instances with their last used timestamp
+market_analyzers: Dict[str, Tuple[MarketAnalyzer, datetime]] = {}
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    try:
-        queue_status = await queue_manager.check_health()
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "queues": queue_status
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc),
+        "version": "1.0.0"
+    }
 
-# Store analyzer instances
-market_analyzers = {}
-
-@app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_market(
-    request: MarketDataRequest,
-    background_tasks: BackgroundTasks,
-    queue_manager: QueueManager = Depends(get_queue_manager)
-) -> AnalysisResponse:
+@app.post("/analyze", response_model=AnalysisResult)
+async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
     """
     Analyze market data and return insights.
     
     Args:
-        request (MarketDataRequest): Market data analysis request
-        background_tasks (BackgroundTasks): FastAPI background tasks
-        queue_manager (QueueManager): Queue manager for message handling
+        request (AnalysisRequest): Market data analysis request
         
     Returns:
-        AnalysisResponse: Analysis results and insights
+        AnalysisResult: Analysis results and insights
     """
     try:
-        # Check cache first
-        cache_key = f"analysis:{request.symbol}:{request.interval}"
-        cached_result = await queue_manager.redis_client.get(cache_key)
-        
-        if cached_result:
-            return AnalysisResponse(**json.loads(cached_result))
+        logger.info(f"Starting analysis for symbol {request.symbol}")
         
         # Get or create analyzer for this market
-        analyzer = market_analyzers.get(request.symbol)
+        analyzer, last_used = market_analyzers.get(request.symbol, (None, None))
         if not analyzer:
+            logger.info("Creating new MarketAnalyzer instance")
             analyzer = MarketAnalyzer(request.symbol)
-            market_analyzers[request.symbol] = analyzer
+            market_analyzers[request.symbol] = (analyzer, datetime.now(timezone.utc))
         
-        # Process the analysis
-        signals = await analyzer.analyze(
-            interval=request.interval,
-            period=request.period
-        )
+        # Fetch market data
+        end_time = request.end_time or datetime.now(timezone.utc)
+        start_time = request.start_time or (end_time - timedelta(days=30))
+        
+        # Convert to naive datetime for yfinance
+        end_time = end_time.replace(tzinfo=None)
+        start_time = start_time.replace(tzinfo=None)
+        
+        logger.info(f"Fetching data for {request.symbol} from {start_time} to {end_time}")
+        try:
+            analyzer.fetch_data(start_time, end_time)
+        except Exception as e:
+            logger.error(f"Error fetching market data: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error fetching market data: {str(e)}"
+            )
+        
+        if analyzer.data is None or len(analyzer.data) == 0:
+            logger.error(f"No data available for {request.symbol}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"No data available for symbol {request.symbol} in the specified date range"
+            )
+        
+        logger.info("Calculating technical indicators")
+        try:
+            analyzer.calculate_technical_indicators()
+        except Exception as e:
+            logger.error(f"Error calculating technical indicators: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error calculating technical indicators: {str(e)}"
+            )
+        
+        # Identify market states if requested
+        current_state = None
+        if request.state_analysis:
+            logger.info("Performing market state analysis")
+            try:
+                state_info = analyzer.identify_market_states(n_states=request.num_states)
+                if analyzer.current_state is not None:
+                    # Convert state characteristics to a simple dict of floats
+                    characteristics = {}
+                    if analyzer.state_characteristics is not None:
+                        for key, value_dict in analyzer.state_characteristics.items():
+                            # Convert each dictionary to a single float value (e.g., average of all values)
+                            if isinstance(value_dict, dict):
+                                value = float(np.mean(list(value_dict.values())))
+                            else:
+                                value = float(value_dict)
+                            characteristics[str(key)] = value
+                    
+                    current_state = MarketState(
+                        state_id=int(analyzer.current_state),
+                        description=analyzer.state_description or "Unknown",
+                        characteristics=characteristics,
+                        confidence=0.8  # Default confidence
+                    )
+            except Exception as e:
+                logger.error(f"Error in market state analysis: {str(e)}", exc_info=True)
+                # Continue without state analysis
+                pass
+        
+        # Generate trading signals
+        logger.info("Generating trading signals")
+        try:
+            signals_data = analyzer.generate_trading_signals()
+            trading_signals = []
+            
+            # Extract signals from the dictionary
+            composite_signals = signals_data['composite_signal']
+            confidence_values = signals_data['confidence']
+            
+            # Convert the signals to TradingSignal objects
+            for i in range(len(analyzer.data)):
+                signal_value = composite_signals[i]
+                confidence = confidence_values[i]
+                
+                if abs(signal_value) > 0.1:  # Only include significant signals
+                    signal = TradingSignal(
+                        timestamp=analyzer.data.index[i],
+                        signal_type="BUY" if signal_value > 0 else "SELL",
+                        strength=abs(signal_value),
+                        confidence=confidence,
+                        indicators=request.indicators  # Add the requested indicators
+                    )
+                    trading_signals.append(signal)
+        except Exception as e:
+            logger.error(f"Error generating trading signals: {str(e)}", exc_info=True)
+            # Continue without signals
+            trading_signals = []
+        
+        # Convert technical indicators to API model
+        technical_indicators = []
+        base_config = analyzer.indicator_config['base_config']
+        for name in request.indicators:
+            if name.lower() in analyzer.technical_indicators:
+                data = analyzer.technical_indicators[name.lower()]
+                config = base_config.get(name.lower(), {})
+                
+                value = clean_float(data.iloc[-1])
+                if value is not None:
+                    indicator = TechnicalIndicator(
+                        name=name,
+                        value=value,
+                        upper_threshold=clean_float(config.get('upper_threshold')),
+                        lower_threshold=clean_float(config.get('lower_threshold'))
+                    )
+                    technical_indicators.append(indicator)
         
         # Create response
-        result = create_analysis_response(analyzer, signals)
-
-        # Cache the result
-        await queue_manager.redis_client.set(
-            cache_key,
-            json.dumps(result.dict()),
-            expire=300  # 5 minutes cache
-        )
-        
-        # Publish update to subscribers
-        await queue_manager.redis_client.publish_market_update(
-            market_id=request.symbol,
-            data=result.dict()
-        )
-        
-        # Schedule cleanup task
-        background_tasks.add_task(cleanup_old_analyzers)
-        
-        return result
+        try:
+            current_price = clean_float(analyzer.data['close'].iloc[-1])
+            if current_price is None:
+                raise ValueError("Invalid current price")
+            
+            result = AnalysisResult(
+                symbol=request.symbol,
+                timestamp=datetime.now(timezone.utc),
+                current_price=current_price,
+                technical_indicators=technical_indicators,
+                market_state=current_state,
+                latest_signal=trading_signals[-1] if trading_signals else None,
+                historical_signals=trading_signals
+            )
+            return result
+        except Exception as e:
+            logger.error(f"Error creating analysis result: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error creating analysis result: {str(e)}"
+            )
         
     except Exception as e:
         logger.error(f"Error processing market analysis: {str(e)}")
@@ -164,56 +216,3 @@ async def analyze_market(
             status_code=500,
             detail=f"Error processing market analysis: {str(e)}"
         )
-
-def create_analysis_response(analyzer: MarketAnalyzer, signals: dict) -> AnalysisResponse:
-    """Convert analyzer results to API response model"""
-    return AnalysisResponse(
-        symbol=analyzer.symbol,
-        signals=[{
-            'timestamp': analyzer.data.index[i],
-            'composite_signal': signals['composite_signal'][i],
-            'confidence': signals['confidence'][i],
-            'state': signals['current_state']
-        } for i in range(len(signals['composite_signal']))],
-        states=[{
-            'state': state,
-            **characteristics
-        } for state, characteristics in signals['state_characteristics'].items()],
-        metadata={
-            'analysis_timestamp': datetime.now(timezone.utc).timestamp(),
-            'data_points': len(analyzer.data),
-            'signal_strength': float(signals['composite_signal'][-1]),
-            'current_confidence': float(signals['confidence'][-1])
-        }
-    )
-
-async def cleanup_old_analyzers():
-    """Remove analyzers that haven't been used recently"""
-    # TODO: Implement cleanup logic
-    pass
-
-@app.websocket("/ws/market/{market_id}")
-async def market_websocket(
-    websocket: WebSocket,
-    market_id: str,
-    client_id: str = None,
-    queue_manager: QueueManager = Depends(get_queue_manager)
-):
-    """
-    WebSocket endpoint for real-time market data streaming.
-    
-    Args:
-        websocket (WebSocket): The WebSocket connection
-        market_id (str): Market identifier for the subscription
-        client_id (str, optional): Client identifier. Defaults to None.
-        queue_manager (QueueManager): Queue manager instance
-    """
-    if client_id is None:
-        client_id = str(uuid.uuid4())
-    
-    await handle_market_subscription(
-        websocket=websocket,
-        client_id=client_id,
-        market_id=market_id,
-        queue_manager=queue_manager
-    )
