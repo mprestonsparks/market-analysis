@@ -50,13 +50,12 @@ class TestMarketAnalyzer(unittest.TestCase):
         self.analyzer.fetch_data(self.start_date, self.end_date)
         self.analyzer.calculate_technical_indicators()
         signals = self.analyzer.generate_trading_signals()
-        
+
         # Check signal structure
-        self.assertIn('individual_signals', signals)
-        self.assertIn('final_signal', signals)
-        
-        # Check signal values
-        self.assertIn(signals['final_signal'], ['BUY', 'SELL', 'HOLD'])
+        self.assertIn('composite_signal', signals)
+        self.assertIn('confidence', signals)
+        self.assertIn('state_characteristics', signals)
+        self.assertIn('current_state', signals)
 
 if __name__ == '__main__':
     unittest.main()

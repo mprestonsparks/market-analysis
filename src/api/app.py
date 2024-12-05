@@ -33,6 +33,16 @@ app = FastAPI(
 # Initialize global queue manager
 queue_manager = None
 
+# Add middleware in the correct order
+app.add_middleware(ErrorHandler)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Update this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 def get_queue_manager() -> QueueManager:
     """
     FastAPI dependency for getting the queue manager instance.
@@ -46,18 +56,6 @@ def get_queue_manager() -> QueueManager:
             detail="Queue manager not initialized"
         )
     return queue_manager
-
-# Add error handler middleware
-app.add_middleware(ErrorHandler)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Update this in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.on_event("startup")
 async def startup_event():
