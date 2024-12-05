@@ -94,8 +94,52 @@ Check out the `examples` directory for sample scripts demonstrating various anal
 
 ## Documentation
 
-Detailed documentation is available in the [docs](docs/) directory:
-- [State-Aware Trading System Guide](docs/state_aware_trading.md)
+- [API Reference](docs/api_reference.md) - Detailed documentation of the REST API endpoints and usage
+- [State-Aware Trading](docs/state_aware_trading.md) - Technical details of the state-aware trading system
+- [Developer Guide](docs/dev/README.md) - Guide for developers contributing to the project
+
+## Usage
+
+The market analysis tool can be used either through the REST API or as a Python library:
+
+### REST API
+
+Start the API server:
+```bash
+python -m uvicorn src.api.app:app --reload
+```
+
+Example API request:
+```bash
+curl -X POST "http://localhost:8000/analyze" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "symbol": "AAPL",
+       "indicators": ["RSI", "MACD", "BB"],
+       "state_analysis": true,
+       "num_states": 3
+     }'
+```
+
+See the [API Reference](docs/api_reference.md) for detailed documentation.
+
+### Python Library
+
+The market analysis tool can be run from the command line with various options:
+
+```bash
+# Basic usage - analyze last 365 days of AAPL
+python src/main.py --symbol AAPL --days 365
+
+# Analyze specific date range for TSLA without signals
+python src/main.py --symbol TSLA --start 2023-01-01 --end 2023-12-31 --no-signals
+
+# Quick analysis of MSFT without state identification
+python src/main.py --symbol MSFT --days 30 --no-states
+
+# Save plot to file
+python src/main.py --symbol GOOGL --days 180 --save analysis.png
+```
 
 ## Project Structure
 
@@ -106,6 +150,9 @@ market-analysis/
 ├── README.md
 ├── docs/
 │   └── state_aware_trading.md
+│   └── api_reference.md
+│   └── dev/
+│       └── README.md
 ├── examples/
 │   └── run_analysis.py
 └── src/
@@ -115,6 +162,8 @@ market-analysis/
     │   └── technical_indicators.py
     ├── market_analysis.py
     └── main.py
+    └── api/
+        └── app.py
 ```
 
 ## Dependencies
@@ -129,6 +178,7 @@ market-analysis/
 - ratelimit
 - python-dotenv
 - asyncio
+- uvicorn
 
 ## Rate Limiting
 

@@ -121,13 +121,13 @@ async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
                     # Convert state characteristics to a simple dict of floats
                     characteristics = {}
                     if analyzer.state_characteristics is not None:
-                        for key, value_dict in analyzer.state_characteristics.items():
-                            # Convert each dictionary to a single float value (e.g., average of all values)
-                            if isinstance(value_dict, dict):
-                                value = float(np.mean(list(value_dict.values())))
-                            else:
-                                value = float(value_dict)
-                            characteristics[str(key)] = value
+                        state_data = analyzer.state_characteristics[analyzer.current_state]
+                        characteristics = {
+                            'volatility': clean_float(state_data.get('volatility', 0.0)),
+                            'trend_strength': clean_float(state_data.get('trend_strength', 0.0)),
+                            'volume': clean_float(state_data.get('volume', 0.0)),
+                            'return_dispersion': clean_float(state_data.get('return_dispersion', 0.0))
+                        }
                     
                     current_state = MarketState(
                         state_id=int(analyzer.current_state),
@@ -164,9 +164,9 @@ async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
                     signal = TradingSignal(
                         timestamp=analyzer.data.index[i],
                         signal_type="BUY" if signal_value > 0 else "SELL",
-                        strength=abs(signal_value),
                         confidence=confidence,
-                        indicators=request.indicators
+                        indicators=request.indicators,
+                        state_context=current_state
                     )
                     trading_signals.append(signal)
         except Exception as e:
@@ -187,8 +187,8 @@ async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
                     indicator = TechnicalIndicator(
                         name=name,
                         value=value,
-                        upper_threshold=clean_float(config.get('upper_threshold')),
-                        lower_threshold=clean_float(config.get('lower_threshold'))
+                        upper_threshold=clean_float(config.get('overbought', config.get('upper_threshold'))),
+                        lower_threshold=clean_float(config.get('oversold', config.get('lower_threshold')))
                     )
                     technical_indicators.append(indicator)
         

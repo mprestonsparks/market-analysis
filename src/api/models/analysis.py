@@ -1,7 +1,56 @@
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from pydantic import BaseModel, Field
 from decimal import Decimal
+
+class TimeWindowConfig(BaseModel):
+    """Configuration for time windows of different indicators"""
+    rsi_window: int = Field(default=14, description="RSI calculation window")
+    macd_fast_period: int = Field(default=12, description="MACD fast period")
+    macd_slow_period: int = Field(default=26, description="MACD slow period")
+    macd_signal_period: int = Field(default=9, description="MACD signal line period")
+    stoch_k_period: int = Field(default=14, description="Stochastic %K period")
+    stoch_d_period: int = Field(default=3, description="Stochastic %D period")
+    bb_window: int = Field(default=20, description="Bollinger Bands window")
+    bb_num_std: float = Field(default=2.0, description="Bollinger Bands number of standard deviations")
+
+class StateAnalysisConfig(BaseModel):
+    """Configuration for market state analysis"""
+    volatility_weight: float = Field(default=1.0, description="Weight of volatility in state analysis")
+    trend_weight: float = Field(default=1.0, description="Weight of trend strength in state analysis")
+    volume_weight: float = Field(default=1.0, description="Weight of volume in state analysis")
+    volatility_scale: float = Field(default=0.5, description="Scaling factor for volatility impact")
+    trend_scale: float = Field(default=0.3, description="Scaling factor for trend impact")
+    volume_scale: float = Field(default=0.2, description="Scaling factor for volume impact")
+
+class SignalGenerationConfig(BaseModel):
+    """Configuration for signal generation process"""
+    historical_window: int = Field(default=100, description="Historical window for calculations")
+    volume_impact: float = Field(default=0.2, description="Volume impact on signal confidence")
+    smoothing_window: int = Field(default=1, description="Window for signal smoothing")
+    combination_method: str = Field(default="weighted", description="Method to combine signals: weighted, voting, or consensus")
+
+class SignalThresholds(BaseModel):
+    """Configuration for signal generation thresholds"""
+    # Basic thresholds
+    rsi_oversold: float = Field(default=30.0, description="RSI oversold threshold")
+    rsi_overbought: float = Field(default=70.0, description="RSI overbought threshold")
+    rsi_weight: float = Field(default=0.4, description="Weight of RSI in composite signal")
+    
+    macd_threshold_std: float = Field(default=1.5, description="MACD threshold in standard deviations")
+    macd_weight: float = Field(default=0.4, description="Weight of MACD in composite signal")
+    
+    stoch_oversold: float = Field(default=20.0, description="Stochastic oversold threshold")
+    stoch_overbought: float = Field(default=80.0, description="Stochastic overbought threshold")
+    stoch_weight: float = Field(default=0.2, description="Weight of Stochastic in composite signal")
+    
+    min_signal_strength: float = Field(default=0.1, description="Minimum signal strength to generate a signal")
+    min_confidence: float = Field(default=0.5, description="Minimum confidence level for signals")
+    
+    # Additional configuration
+    time_windows: Optional[TimeWindowConfig] = Field(None, description="Time window configurations")
+    state_analysis: Optional[StateAnalysisConfig] = Field(None, description="State analysis configurations")
+    signal_generation: Optional[SignalGenerationConfig] = Field(None, description="Signal generation configurations")
 
 class TechnicalIndicator(BaseModel):
     """Model for technical indicator values."""
@@ -32,22 +81,6 @@ class TradingSignal(BaseModel):
     confidence: float = Field(..., ge=0, le=1, description="Confidence level of the signal")
     indicators: List[str] = Field(..., description="Indicators contributing to the signal")
     state_context: Optional[MarketState] = Field(None, description="Market state context for the signal")
-
-class SignalThresholds(BaseModel):
-    """Configuration for signal generation thresholds"""
-    rsi_oversold: float = Field(default=30.0, description="RSI oversold threshold")
-    rsi_overbought: float = Field(default=70.0, description="RSI overbought threshold")
-    rsi_weight: float = Field(default=0.4, description="Weight of RSI in composite signal")
-    
-    macd_threshold_std: float = Field(default=1.5, description="MACD threshold in standard deviations")
-    macd_weight: float = Field(default=0.4, description="Weight of MACD in composite signal")
-    
-    stoch_oversold: float = Field(default=20.0, description="Stochastic oversold threshold")
-    stoch_overbought: float = Field(default=80.0, description="Stochastic overbought threshold")
-    stoch_weight: float = Field(default=0.2, description="Weight of Stochastic in composite signal")
-    
-    min_signal_strength: float = Field(default=0.1, description="Minimum signal strength to generate a signal")
-    min_confidence: float = Field(default=0.5, description="Minimum confidence level for signals")
 
 class AnalysisRequest(BaseModel):
     """Model for market analysis request."""
