@@ -225,10 +225,13 @@ class MarketAnalyzer:
         self.technical_indicators['bb_low'] = bb.bollinger_lband()
         self.technical_indicators['bb_mid'] = bb.bollinger_mavg()
 
-    def generate_trading_signals(self) -> Dict:
+    def generate_trading_signals(self, thresholds=None) -> Dict:
         """
         Generate trading signals based on technical indicators and dynamic state-based thresholds.
         Returns signals for the entire time series.
+        
+        Args:
+            thresholds: Optional signal generation thresholds. If None, uses default configuration.
         """
         if not self.technical_indicators:
             self.calculate_technical_indicators()
@@ -237,6 +240,21 @@ class MarketAnalyzer:
             self.identify_market_states()
             
         config = self.get_state_adjusted_config()
+        
+        # Override config with provided thresholds if any
+        if thresholds:
+            config['rsi']['oversold'] = thresholds.rsi_oversold
+            config['rsi']['overbought'] = thresholds.rsi_overbought
+            config['rsi']['weight'] = thresholds.rsi_weight
+            
+            config['macd']['threshold_std'] = thresholds.macd_threshold_std
+            config['macd']['weight'] = thresholds.macd_weight
+            
+            config['stochastic']['oversold'] = thresholds.stoch_oversold
+            config['stochastic']['overbought'] = thresholds.stoch_overbought
+            config['stochastic']['weight'] = thresholds.stoch_weight
+            
+            self.indicator_config['min_signal_confidence'] = thresholds.min_confidence
         
         # Initialize signal arrays
         length = len(self.data)
@@ -251,9 +269,8 @@ class MarketAnalyzer:
             rsi = self.technical_indicators['rsi'].iloc[i]
             rsi_history = self.technical_indicators['rsi'].iloc[i-historical_window:i]
             
-            rsi_threshold = config['rsi']['threshold_percentile']
-            oversold = np.percentile(rsi_history, 100 - rsi_threshold)
-            overbought = np.percentile(rsi_history, rsi_threshold)
+            oversold = config['rsi']['oversold']
+            overbought = config['rsi']['overbought']
             
             rsi_signal = 1 if rsi < oversold else -1 if rsi > overbought else 0
             rsi_strength = abs((rsi - 50) / 50)
@@ -273,11 +290,10 @@ class MarketAnalyzer:
             stoch_k = self.technical_indicators['stoch_k'].iloc[i]
             stoch_history = self.technical_indicators['stoch_k'].iloc[i-historical_window:i]
             
-            stoch_threshold = config['stochastic']['threshold_percentile']
-            stoch_oversold = np.percentile(stoch_history, 100 - stoch_threshold)
-            stoch_overbought = np.percentile(stoch_history, stoch_threshold)
+            oversold = config['stochastic']['oversold']
+            overbought = config['stochastic']['overbought']
             
-            stoch_signal = 1 if stoch_k < stoch_oversold else -1 if stoch_k > stoch_overbought else 0
+            stoch_signal = 1 if stoch_k < oversold else -1 if stoch_k > overbought else 0
             stoch_strength = min(abs(stoch_k - 50) / 50, 1.0)
             
             # Calculate weighted composite signal

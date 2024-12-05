@@ -33,6 +33,22 @@ class TradingSignal(BaseModel):
     indicators: List[str] = Field(..., description="Indicators contributing to the signal")
     state_context: Optional[MarketState] = Field(None, description="Market state context for the signal")
 
+class SignalThresholds(BaseModel):
+    """Configuration for signal generation thresholds"""
+    rsi_oversold: float = Field(default=30.0, description="RSI oversold threshold")
+    rsi_overbought: float = Field(default=70.0, description="RSI overbought threshold")
+    rsi_weight: float = Field(default=0.4, description="Weight of RSI in composite signal")
+    
+    macd_threshold_std: float = Field(default=1.5, description="MACD threshold in standard deviations")
+    macd_weight: float = Field(default=0.4, description="Weight of MACD in composite signal")
+    
+    stoch_oversold: float = Field(default=20.0, description="Stochastic oversold threshold")
+    stoch_overbought: float = Field(default=80.0, description="Stochastic overbought threshold")
+    stoch_weight: float = Field(default=0.2, description="Weight of Stochastic in composite signal")
+    
+    min_signal_strength: float = Field(default=0.1, description="Minimum signal strength to generate a signal")
+    min_confidence: float = Field(default=0.5, description="Minimum confidence level for signals")
+
 class AnalysisRequest(BaseModel):
     """Model for market analysis request."""
     symbol: str = Field(..., description="Trading symbol to analyze")
@@ -52,6 +68,7 @@ class AnalysisRequest(BaseModel):
         ge=2,
         le=5
     )
+    thresholds: Optional[SignalThresholds] = Field(None, description="Signal generation thresholds")
 
 class AnalysisResult(BaseModel):
     """Model for market analysis results."""

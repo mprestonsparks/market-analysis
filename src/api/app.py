@@ -143,7 +143,7 @@ async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
         # Generate trading signals
         logger.info("Generating trading signals")
         try:
-            signals_data = analyzer.generate_trading_signals()
+            signals_data = analyzer.generate_trading_signals(thresholds=request.thresholds)
             trading_signals = []
             
             # Extract signals from the dictionary
@@ -155,13 +155,18 @@ async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
                 signal_value = composite_signals[i]
                 confidence = confidence_values[i]
                 
-                if abs(signal_value) > 0.1:  # Only include significant signals
+                if request.thresholds:
+                    min_strength = request.thresholds.min_signal_strength
+                else:
+                    min_strength = 0.1
+                
+                if abs(signal_value) > min_strength:  # Only include significant signals
                     signal = TradingSignal(
                         timestamp=analyzer.data.index[i],
                         signal_type="BUY" if signal_value > 0 else "SELL",
                         strength=abs(signal_value),
                         confidence=confidence,
-                        indicators=request.indicators  # Add the requested indicators
+                        indicators=request.indicators
                     )
                     trading_signals.append(signal)
         except Exception as e:
