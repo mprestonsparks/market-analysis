@@ -6,161 +6,119 @@ from pydantic import ValidationError
 from src.api.models.analysis import (
     TechnicalIndicator,
     MarketState,
-    IndicatorValue,
-    CompositeSignal,
+    TradingSignal,
     AnalysisRequest,
     AnalysisResult
 )
 
 
-def test_indicator_value_valid():
-    """Test creating a valid IndicatorValue instance."""
+def test_technical_indicator_valid():
+    """Test creating a valid TechnicalIndicator instance."""
     data = {
-        "name": TechnicalIndicator.RSI,
+        "name": "RSI",
         "value": 65.5,
-        "upper_band": 70.0,
-        "lower_band": 30.0,
-        "configuration": {
-            "period": 14,
-            "weight": 0.4,
-            "threshold_percentile": 80
-        }
+        "upper_threshold": 70.0,
+        "lower_threshold": 30.0
     }
-    indicator = IndicatorValue(**data)
-    assert indicator.name == TechnicalIndicator.RSI
-    assert indicator.value == 65.5
-    assert indicator.upper_band == 70.0
-    assert indicator.lower_band == 30.0
+    indicator = TechnicalIndicator(**data)
+    assert indicator.name == data["name"]
+    assert indicator.value == data["value"]
+    assert indicator.upper_threshold == data["upper_threshold"]
+    assert indicator.lower_threshold == data["lower_threshold"]
 
 
 def test_market_state_valid():
     """Test creating a valid MarketState instance."""
     data = {
         "state_id": 1,
-        "description": "Low volatility uptrend",
+        "description": "Bullish Trend",
         "characteristics": {
-            "volatility": 0.2,
-            "trend": 0.8
-        }
+            "volatility": 0.15,
+            "trend_strength": 0.8,
+            "volume": 1.2
+        },
+        "confidence": 0.85
     }
     state = MarketState(**data)
-    assert state.state_id == 1
-    assert state.description == "Low volatility uptrend"
-    assert state.characteristics["volatility"] == 0.2
-
-
-def test_composite_signal_valid():
-    """Test creating a valid CompositeSignal instance."""
-    data = {
-        "timestamp": datetime.now(timezone.utc),
-        "value": 0.75,
-        "confidence": 0.85,
-        "volume_scale": 1.2,
-        "component_signals": {
-            TechnicalIndicator.RSI: 0.8,
-            TechnicalIndicator.MACD: 0.7,
-            TechnicalIndicator.STOCHASTIC: 0.75
-        },
-        "market_state": {
-            "state_id": 1,
-            "description": "Low volatility uptrend",
-            "characteristics": {
-                "volatility": 0.2,
-                "trend": 0.8
-            }
-        }
-    }
-    signal = CompositeSignal(**data)
-    assert signal.value == 0.75
-    assert signal.confidence == 0.85
-    assert signal.volume_scale == 1.2
-
-
-def test_composite_signal_invalid_value():
-    """Test that invalid signal values are rejected."""
-    data = {
-        "timestamp": datetime.now(timezone.utc),
-        "value": 1.5,  # Should be <= 1
-        "confidence": 0.85,
-        "volume_scale": 1.2,
-        "component_signals": {
-            TechnicalIndicator.RSI: 0.8
-        },
-        "market_state": {
-            "state_id": 1,
-            "description": "Low volatility uptrend",
-            "characteristics": {
-                "volatility": 0.2,
-                "trend": 0.8
-            }
-        }
-    }
-    with pytest.raises(ValidationError):
-        CompositeSignal(**data)
+    assert state.state_id == data["state_id"]
+    assert state.description == data["description"]
+    assert state.characteristics == data["characteristics"]
+    assert state.confidence == data["confidence"]
 
 
 def test_analysis_request_valid():
     """Test creating a valid AnalysisRequest instance."""
+    now = datetime.now(timezone.utc)
     data = {
-        "symbol": "BTC-USD",
-        "indicators": [TechnicalIndicator.RSI, TechnicalIndicator.MACD],
-        "start_time": datetime.now(timezone.utc),
-        "end_time": datetime.now(timezone.utc),
+        "symbol": "AAPL",
+        "start_time": now,
+        "end_time": now,
+        "indicators": ["RSI", "MACD"],
         "state_analysis": True,
         "num_states": 3
     }
     request = AnalysisRequest(**data)
-    assert request.symbol == "BTC-USD"
-    assert len(request.indicators) == 2
-    assert request.num_states == 3
+    assert request.symbol == data["symbol"]
+    assert request.indicators == data["indicators"]
+    assert request.state_analysis == data["state_analysis"]
+    assert request.num_states == data["num_states"]
 
 
 def test_analysis_request_default_indicators():
-    """Test that empty indicators list uses all indicators."""
-    data = {
-        "symbol": "BTC-USD",
-        "indicators": []
-    }
-    request = AnalysisRequest(**data)
-    assert len(request.indicators) == len(TechnicalIndicator)
+    """Test that default indicators are set correctly."""
+    request = AnalysisRequest(symbol="AAPL")
+    assert len(request.indicators) > 0
+    assert "RSI" in request.indicators
 
 
 def test_analysis_result_valid():
     """Test creating a valid AnalysisResult instance."""
+    now = datetime.now(timezone.utc)
+    
+    # Create test data
+    technical_indicators = [
+        TechnicalIndicator(
+            name="RSI",
+            value=65.5,
+            upper_threshold=70.0,
+            lower_threshold=30.0
+        )
+    ]
+    
+    market_state = MarketState(
+        state_id=1,
+        description="Bullish Trend",
+        characteristics={
+            "volatility": 0.15,
+            "trend_strength": 0.8,
+            "volume": 1.2
+        },
+        confidence=0.85
+    )
+    
+    trading_signal = TradingSignal(
+        timestamp=now,
+        signal_type="BUY",
+        confidence=0.8,
+        indicators=["RSI", "MACD"],
+        state_context=market_state
+    )
+    
     data = {
-        "symbol": "BTC-USD",
-        "timestamp": datetime.now(timezone.utc),
-        "market_state": {
-            "state_id": 1,
-            "description": "Low volatility uptrend",
-            "characteristics": {
-                "volatility": 0.2,
-                "trend": 0.8
-            }
-        },
-        "indicators": {
-            TechnicalIndicator.RSI: {
-                "name": TechnicalIndicator.RSI,
-                "value": 65.5,
-                "upper_band": 70.0,
-                "lower_band": 30.0,
-                "configuration": {
-                    "period": 14,
-                    "weight": 0.4,
-                    "threshold_percentile": 80
-                }
-            }
-        },
-        "signals": [],
-        "configuration": {
-            "rsi": {
-                "period": 14,
-                "weight": 0.4,
-                "threshold_percentile": 80
-            }
-        }
+        "symbol": "AAPL",
+        "timestamp": now,
+        "current_price": Decimal("150.50"),
+        "technical_indicators": technical_indicators,
+        "market_state": market_state,
+        "latest_signal": trading_signal,
+        "historical_signals": [trading_signal]
     }
+    
     result = AnalysisResult(**data)
-    assert result.symbol == "BTC-USD"
-    assert len(result.indicators) == 1
-    assert TechnicalIndicator.RSI in result.indicators
+    assert result.symbol == data["symbol"]
+    assert result.timestamp == data["timestamp"]
+    assert result.current_price == data["current_price"]
+    assert len(result.technical_indicators) == len(data["technical_indicators"])
+    assert result.market_state == data["market_state"]
+    assert result.latest_signal == data["latest_signal"]
+    assert len(result.historical_signals) == len(data["historical_signals"])
