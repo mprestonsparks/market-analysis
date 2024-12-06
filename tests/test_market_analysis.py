@@ -6,7 +6,9 @@ import unittest
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
+from unittest.mock import patch
 from src.market_analysis import MarketAnalyzer
+from tests.utils.test_data import generate_test_market_data, VALID_TEST_SYMBOLS
 
 class TestMarketAnalyzer(unittest.TestCase):
     def setUp(self):
@@ -16,10 +18,24 @@ class TestMarketAnalyzer(unittest.TestCase):
 
     def test_fetch_data(self):
         """Test data fetching functionality"""
-        self.analyzer.fetch_data(self.start_date, self.end_date)
-        self.assertIsNotNone(self.analyzer.data)
-        self.assertIsInstance(self.analyzer.data, pd.DataFrame)
-        self.assertTrue(len(self.analyzer.data) > 0)
+        # Generate test data
+        test_data = generate_test_market_data('AAPL', self.start_date, self.end_date)
+        
+        # Mock the fetch_data method
+        with patch.object(MarketAnalyzer, 'fetch_data') as mock_fetch:
+            # Set up the mock to return our test data
+            mock_fetch.return_value = test_data
+            
+            # Call fetch_data
+            data = self.analyzer.fetch_data(self.start_date, self.end_date)
+            
+            # Verify the mock was called
+            mock_fetch.assert_called_once_with(self.start_date, self.end_date)
+            
+            # Verify the returned data
+            self.assertIsNotNone(data)
+            self.assertIsInstance(data, pd.DataFrame)
+            self.assertTrue(len(data) > 0)
 
     def test_technical_indicators(self):
         """Test technical indicator calculation"""

@@ -6,6 +6,7 @@ import traceback
 from typing import Union, Dict, Any
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -34,66 +35,39 @@ class ErrorResponse:
             Dict containing error information
         """
         response = {
-            "error": {
-                "status_code": status_code,
-                "message": message,
-                "type": error_type or "UnknownError"
-            }
+            "error": message,
+            "type": error_type or "UnknownError",
+            "status_code": status_code
         }
         if details:
-            response["error"]["details"] = details
+            response.update(details)
         return response
 
 class ErrorHandler(BaseHTTPMiddleware):
     """Middleware for handling API errors."""
     
-    async def dispatch(self, request: Request, call_next) -> Union[JSONResponse, Any]:
-        """
-        Process the request and handle any errors.
-        
-        Args:
-            request: FastAPI request object
-            call_next: Next middleware in chain
-            
-        Returns:
-            Response object
-        """
+    async def dispatch(self, request: Request, call_next):
+        """Process each request and handle errors."""
         try:
-            response = await call_next(request)
-            return response
-            
+            return await call_next(request)
         except ValidationError as e:
-            logger.warning(f"Validation error: {str(e)}")
             return JSONResponse(
                 status_code=422,
-                content=ErrorResponse.create(
-                    status_code=422,
-                    message="Validation error",
-                    error_type="ValidationError",
-                    details={"errors": e.errors()}
-                )
+                content={"error": "Validation error", "details": e.errors()}
             )
-            
+        except RequestValidationError as e:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "Request validation error", "details": e.errors()}
+            )
         except HTTPException as e:
-            logger.warning(f"HTTP error {e.status_code}: {str(e.detail)}")
             return JSONResponse(
                 status_code=e.status_code,
-                content=ErrorResponse.create(
-                    status_code=e.status_code,
-                    message=str(e.detail),
-                    error_type="HTTPException"
-                )
+                content={"error": e.detail}
             )
-            
         except Exception as e:
-            # Log the full traceback for unexpected errors
-            logger.error(f"Unexpected error: {str(e)}\n{traceback.format_exc()}")
+            logger.error(f"Unhandled error: {str(e)}")
             return JSONResponse(
                 status_code=500,
-                content=ErrorResponse.create(
-                    status_code=500,
-                    message="Internal server error",
-                    error_type=e.__class__.__name__,
-                    details={"error": str(e)} if not isinstance(e, HTTPException) else None
-                )
+                content={"error": "Internal server error"}
             )

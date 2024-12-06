@@ -12,27 +12,35 @@ logger = logging.getLogger(__name__)
 class RedisClient:
     """Redis client wrapper for market analysis."""
     
-    def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0):
+    def __init__(self, host: str = 'redis', port: int = 6379, db: int = 0, test_mode: bool = False):
         """Initialize Redis client.
         
         Args:
             host: Redis host
             port: Redis port
             db: Redis database number
+            test_mode: If True, operate in test mode without Redis connection
         """
-        self.redis_client = redis.Redis(
-            host=host,
-            port=port,
-            db=db,
-            decode_responses=True
-        )
-        
+        self.test_mode = test_mode
+        if not test_mode:
+            self.redis_client = redis.Redis(
+                host=host,
+                port=port,
+                db=db,
+                decode_responses=True
+            )
+        else:
+            self.redis_client = None
+            
     def health_check(self) -> bool:
         """Check Redis connection health.
         
         Returns:
             bool: True if connection is healthy, False otherwise
         """
+        if self.test_mode:
+            return True
+            
         try:
             return self.redis_client.ping()
         except redis.ConnectionError as e:
@@ -50,6 +58,9 @@ class RedisClient:
         Returns:
             bool: True if successful, False otherwise
         """
+        if self.test_mode:
+            return True
+            
         try:
             serialized_value = json.dumps(value)
             return self.redis_client.set(key, serialized_value, ex=expiry)
@@ -66,6 +77,9 @@ class RedisClient:
         Returns:
             Optional[Any]: Retrieved data or None if not found
         """
+        if self.test_mode:
+            return None
+            
         try:
             data = self.redis_client.get(key)
             return json.loads(data) if data else None
@@ -83,6 +97,9 @@ class RedisClient:
         Returns:
             bool: True if successful, False otherwise
         """
+        if self.test_mode:
+            return True
+            
         try:
             serialized_message = json.dumps(message)
             return bool(self.redis_client.publish(channel, serialized_message))
@@ -99,6 +116,9 @@ class RedisClient:
         Returns:
             redis.client.PubSub: Subscription object
         """
+        if self.test_mode:
+            raise Exception("Cannot subscribe in test mode")
+            
         try:
             pubsub = self.redis_client.pubsub()
             pubsub.subscribe(channel)
@@ -115,6 +135,9 @@ class RedisClient:
             market_id (str): Market identifier
             data (dict): Market data to publish
         """
+        if self.test_mode:
+            return
+            
         try:
             channel = f"market:{market_id}"
             await self.redis_client.publish(channel, json.dumps(data))
@@ -132,6 +155,9 @@ class RedisClient:
         Returns:
             aioredis.client.PubSub: Redis pubsub object
         """
+        if self.test_mode:
+            raise Exception("Cannot subscribe in test mode")
+            
         try:
             pubsub = self.redis_client.pubsub()
             channel = f"market:{market_id}"
@@ -148,6 +174,9 @@ class RedisClient:
         Args:
             market_id (str): Market identifier to unsubscribe from
         """
+        if self.test_mode:
+            return
+            
         try:
             channel = f"market:{market_id}"
             await self.redis_client.pubsub().unsubscribe(channel)

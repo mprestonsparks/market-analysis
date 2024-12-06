@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, validator, ValidationInfo
 
 
@@ -62,10 +62,12 @@ class MarketDataRequest(BaseModel):
         return v.upper().strip()
 
     @validator('end_time')
-    def validate_time_range(cls, v: Optional[datetime], values: dict, **kwargs) -> Optional[datetime]:
-        """Validate that end_time is after start_time if both are provided."""
-        if v and values.get('start_time') and v <= values['start_time']:
-            raise ValueError("end_time must be after start_time")
+    @classmethod
+    def validate_end_time(cls, v: datetime, values: Dict[str, Any]) -> datetime:
+        """Validate that end_time is after start_time."""
+        if 'start_time' in values and values['start_time'] and v:
+            if values['start_time'] >= v:
+                raise ValueError("end_time must be after start_time")
         return v
 
     class Config:

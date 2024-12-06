@@ -1,70 +1,85 @@
 """
-Queue manager for handling Redis and RabbitMQ connections.
+Queue manager for handling market data subscriptions.
 """
-import os
 import logging
 from typing import Optional
 from .redis_client import RedisClient
-from .rabbitmq_client import RabbitMQClient
 
 logger = logging.getLogger(__name__)
 
 class QueueManager:
-    """Manager class for message queue connections."""
+    """Queue manager for market data subscriptions."""
     
     _instance: Optional['QueueManager'] = None
     
-    def __new__(cls):
+    def __new__(cls, redis_client: Optional[RedisClient] = None, test_mode: bool = False):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
     
-    def __init__(self):
-        """Initialize queue connections if not already initialized."""
-        if not hasattr(self, 'initialized'):
-            self.redis_client = RedisClient(
-                host=os.getenv('REDIS_HOST', 'localhost'),
-                port=int(os.getenv('REDIS_PORT', 6379))
-            )
-            
-            self.rabbitmq_client = RabbitMQClient(
-                host=os.getenv('RABBITMQ_HOST', 'localhost'),
-                port=int(os.getenv('RABBITMQ_PORT', 5672))
-            )
-            
-            self.initialized = True
-            
-    async def check_health(self) -> dict:
-        """Check health of all queue connections.
+    def __init__(self, redis_client: Optional[RedisClient] = None, test_mode: bool = False):
+        """Initialize queue manager.
         
-        Returns:
-            dict: Health status of each connection
+        Args:
+            redis_client: Redis client instance
+            test_mode: If True, operate in test mode without Redis
         """
-        redis_health = self.redis_client.health_check()
-        rabbitmq_health = await self.rabbitmq_client.health_check()
+        if not hasattr(self, 'initialized'):
+            self.redis_client = redis_client
+            self.test_mode = test_mode
+            self.initialized = True
         
-        return {
-            'redis': 'healthy' if redis_health else 'unhealthy',
-            'rabbitmq': 'healthy' if rabbitmq_health else 'unhealthy'
-        }
+    async def publish_market_data(self, market_id: str, data: dict):
+        """Publish market data to Redis channel.
         
-    async def initialize_rabbitmq(self):
-        """Initialize RabbitMQ connection and declare queues."""
-        try:
-            await self.rabbitmq_client.connect()
-            # Declare necessary queues
-            queues = ['market_data', 'analysis_results', 'trading_signals']
-            for queue in queues:
-                await self.rabbitmq_client.declare_queue(queue)
-        except Exception as e:
-            logger.error(f"Failed to initialize RabbitMQ: {e}")
-            raise
+        Args:
+            market_id: Market identifier
+            data: Market data to publish
+        """
+        if self.test_mode:
+            return
             
-    async def cleanup(self):
-        """Cleanup queue connections."""
-        try:
-            await self.rabbitmq_client.close()
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+        if self.redis_client:
+            await self.redis_client.publish_market_data(market_id, data)
+        else:
+            logger.warning("No Redis client available for publishing market data")
             
+    async def subscribe_to_market(self, market_id: str, client_id: str) -> bool:
+        """Subscribe to market data channel.
+        
+        Args:
+            market_id: Market identifier
+            client_id: Client identifier
+            
+        Returns:
+            bool: True if subscription was successful
+        """
+        if self.test_mode:
+            return True
+            
+        if self.redis_client:
+            return await self.redis_client.subscribe_to_market(market_id, client_id)
+        else:
+            logger.warning("No Redis client available for market subscription")
+            return False
+            
+    async def unsubscribe_from_market(self, market_id: str, client_id: str) -> bool:
+        """Unsubscribe from market data channel.
+        
+        Args:
+            market_id: Market identifier
+            client_id: Client identifier
+            
+        Returns:
+            bool: True if unsubscription was successful
+        """
+        if self.test_mode:
+            return True
+            
+        if self.redis_client:
+            return await self.redis_client.unsubscribe_from_market(market_id, client_id)
+        else:
+            logger.warning("No Redis client available for market unsubscription")
+            return False
+
 queue_manager = QueueManager()

@@ -45,14 +45,17 @@ def test_error_handling(test_client):
     assert response.status_code == 422
     error = response.json()
     assert "error" in error
-    assert error["error"]["type"] == "ValidationError"
+    assert error["type"] == "ValidationError"
+    assert "status_code" in error
+    assert error["status_code"] == 422
     
     # Test non-existent endpoint
     response = test_client.get("/non_existent")
     assert response.status_code == 404
     error = response.json()
     assert "error" in error
-    assert error["error"]["type"] == "HTTPException"
+    assert error["type"] == "HTTPException"
+    assert error["status_code"] == 404
     
     # Test malformed JSON
     response = test_client.post(
@@ -67,8 +70,10 @@ def test_error_handling(test_client):
 
 def test_websocket_error_handling(test_client):
     """Test WebSocket error handling."""
+    from websockets.exceptions import ConnectionClosed
+    
     # Test invalid market ID
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Invalid market ID"):
         with test_client.websocket_connect("/ws/market/invalid-market"):
             pass
     
@@ -78,7 +83,7 @@ def test_websocket_error_handling(test_client):
         websocket.close()
         
         # Try to send after close
-        with pytest.raises(Exception):
+        with pytest.raises((ConnectionClosed, RuntimeError)):
             websocket.send_json({"type": "test"})
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ import logging
 import asyncio
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from sklearn.ensemble import RandomForestRegressor, IsolationForest
 from sklearn.metrics import mean_squared_error
 from scipy import stats
@@ -51,32 +51,51 @@ def rate_limited_fetch(symbol: str, start_date: datetime, end_date: datetime) ->
         try:
             ticker = yf.Ticker(symbol)
             data = ticker.history(start=start_date, end=end_date)
+            if data.empty:
+                raise ValueError(f"No data available for {symbol} in the specified time range")
             return data
         except Exception as e:
-            if "rate limit" in str(e).lower():
-                delay = min(yf_config['BASE_DELAY'] * (2 ** attempt), yf_config['MAX_DELAY'])
-                logging.warning(f"Rate limit hit. Waiting {delay} seconds before retry...")
-                time.sleep(delay)
-            else:
+            if attempt == yf_config['MAX_RETRIES'] - 1:
                 raise e
-    
-    raise Exception("Max retries exceeded for data fetching")
+            wait_time = (2 ** attempt) * yf_config['BASE_WAIT_TIME']
+            logger.warning(f"Attempt {attempt + 1} failed, waiting {wait_time}s before retry")
+            time.sleep(wait_time)
 
-def fetch_market_data(symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+def fetch_market_data(symbol: str, start_date: datetime, end_date: datetime, test_mode: bool = False) -> pd.DataFrame:
     """
     Fetch market data for a given symbol with rate limiting.
+    
+    Args:
+        symbol: Market symbol
+        start_date: Start date
+        end_date: End date
+        test_mode: If True, use test data instead of real market data
+        
+    Returns:
+        DataFrame with market data
     """
-    try:
-        return rate_limited_fetch(symbol, start_date, end_date)
-    except Exception as e:
-        logging.error(f"Error fetching data for {symbol}: {str(e)}")
-        raise
+    if test_mode:
+        # Import test utilities only in test mode
+        try:
+            from tests.utils.test_data import get_test_market_data, VALID_TEST_SYMBOLS
+            if symbol not in VALID_TEST_SYMBOLS:
+                raise ValueError(f"Invalid test symbol: {symbol}. Valid test symbols are: {VALID_TEST_SYMBOLS}")
+            return get_test_market_data(symbol, start_date, end_date)
+        except ImportError:
+            raise ImportError("Test utilities not available. Make sure tests/utils is in your Python path.")
+    return rate_limited_fetch(symbol, start_date, end_date)
 
 class MarketAnalyzer:
-    """
-    Main class for market analysis functionality.
-    """
-    def __init__(self, symbol: str, indicator_config: Dict = None):
+    """Main class for market analysis functionality."""
+    
+    def __init__(self, symbol: str, indicator_config: Dict = None, test_mode: bool = False):
+        """Initialize MarketAnalyzer.
+        
+        Args:
+            symbol: Market symbol to analyze
+            indicator_config: Optional custom indicator configuration
+            test_mode: If True, use test data instead of real market data
+        """
         self.symbol = symbol
         self.data = None
         self.states = []
@@ -85,6 +104,7 @@ class MarketAnalyzer:
         self.current_state = None
         self.state_description = None
         self.state_characteristics = None
+        self.test_mode = test_mode
         
     def get_state_adjusted_config(self):
         """
@@ -156,24 +176,35 @@ class MarketAnalyzer:
         self.pca = PCA(n_components=2)
         self.pca_result = self.pca.fit_transform(features_scaled)
         
+        # Ensure we have enough unique points for the requested number of clusters
+        unique_points = np.unique(self.pca_result, axis=0)
+        actual_n_states = min(n_states, len(unique_points))
+        
         # Cluster states using PCA components
         from sklearn.cluster import KMeans
-        kmeans = KMeans(n_clusters=n_states, random_state=42)
+        kmeans = KMeans(n_clusters=actual_n_states, random_state=42)
         self.states = kmeans.fit_predict(self.pca_result)
         
         # Calculate state characteristics for dynamic threshold adjustment
         self.state_characteristics = {}
-        for state in range(n_states):
+        for state in range(actual_n_states):
             state_mask = self.states == state
+            if not np.any(state_mask):  # Skip if no points in this state
+                continue
+                
             state_features = features[state_mask]
             
+            # Calculate means with proper error handling
+            def safe_mean(arr):
+                return np.nan if len(arr) == 0 else np.mean(arr)
+            
             self.state_characteristics[state] = {
-                'volatility': state_features['volatility'].mean(),
-                'trend_strength': state_features['trend_strength'].mean(),
-                'volume': state_features['volume'].mean(),
-                'return_dispersion': state_features['return_dispersion'].mean(),
-                'component_1': self.pca_result[state_mask, 0].mean(),
-                'component_2': self.pca_result[state_mask, 1].mean()
+                'volatility': safe_mean(state_features['volatility']),
+                'trend_strength': safe_mean(state_features['trend_strength']),
+                'volume': safe_mean(state_features['volume']),
+                'return_dispersion': safe_mean(state_features['return_dispersion']),
+                'component_1': safe_mean(self.pca_result[state_mask, 0]),
+                'component_2': safe_mean(self.pca_result[state_mask, 1])
             }
         
         # Set current state and its characteristics
@@ -599,9 +630,36 @@ class MarketAnalyzer:
         ax.set_title('Feature Importance in First Principal Component')
         ax.set_xlabel('Absolute Coefficient Value')
         
-    def fetch_data(self, start_date: datetime, end_date: datetime):
-        """Fetch market data for analysis."""
-        data = fetch_market_data(self.symbol, start_date, end_date)
-        # Standardize column names
-        data.columns = [col.lower() for col in data.columns]
-        self.data = data
+    def _standardize_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Standardize column names from various data sources."""
+        column_map = {
+            'Close': 'close',
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Volume': 'volume',
+            'Adj Close': 'adj_close'
+        }
+        return data.rename(columns=column_map)
+
+    def fetch_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        """Fetch market data for analysis.
+        
+        Args:
+            start_date: Start date for data fetch
+            end_date: End date for data fetch
+            
+        Returns:
+            DataFrame with market data
+        """
+        try:
+            data = fetch_market_data(self.symbol, start_date, end_date, self.test_mode)
+            if data is None or len(data) == 0:
+                raise ValueError(f"No data available for {self.symbol}")
+            
+            # Standardize column names
+            self.data = self._standardize_columns(data)
+            return self.data
+        except Exception as e:
+            logger.error(f"Error fetching data for {self.symbol}: {str(e)}")
+            raise

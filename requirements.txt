@@ -3,6 +3,7 @@ fastapi>=0.104.1
 uvicorn>=0.24.0
 pydantic>=2.5.2
 pydantic-settings>=2.0.0
+fastapi-rate-limit>=0.1.0
 
 # Data Processing and Analysis
 pandas>=2.1.3
