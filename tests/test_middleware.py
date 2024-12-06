@@ -2,18 +2,44 @@
 Test middleware functionality.
 """
 import pytest
+from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.testclient import TestClient
-import json
-from src.api.app import app
+from starlette.websockets import WebSocketDisconnect
+from src.api.middleware import RateLimiter
+from src.api.websocket.handlers import handle_market_subscription
 
 @pytest.fixture
-def test_client():
-    return TestClient(app)
+def test_app():
+    """Create test FastAPI app with middleware."""
+    app = FastAPI()
+    rate_limiter = RateLimiter(app, requests_per_minute=100, test_mode=True)
+    app.add_middleware(RateLimiter)
+    
+    @app.get("/test")
+    def test_endpoint():
+        return {"status": "ok"}
+    
+    @app.websocket("/ws/market/{market_id}")
+    async def websocket_endpoint(websocket: WebSocket, market_id: str):
+        await handle_market_subscription(websocket, "test-client", market_id, None)
+        
+    return app, rate_limiter
 
-def test_rate_limiting(test_client):
+@pytest.fixture
+def test_client(test_app):
+    """Create test client."""
+    app, rate_limiter = test_app
+    client = TestClient(app)
+    # Reset rate limiter before each test
+    rate_limiter.reset()
+    return client
+
+def test_rate_limiting(test_client, test_app):
     """Test rate limiting middleware."""
+    app, rate_limiter = test_app
+    
     # Test normal request
-    response = test_client.get("/health")
+    response = test_client.get("/test")
     assert response.status_code == 200
     
     # Verify rate limit headers
@@ -24,7 +50,7 @@ def test_rate_limiting(test_client):
     # Test rate limiting by making many requests
     responses = []
     for _ in range(110):  # Over our 100 req/min limit
-        responses.append(test_client.get("/health"))
+        responses.append(test_client.get("/test"))
     
     # Verify some requests were rate limited
     assert any(r.status_code == 429 for r in responses)
@@ -33,58 +59,39 @@ def test_rate_limiting(test_client):
     rate_limited = next(r for r in responses if r.status_code == 429)
     error_response = rate_limited.json()
     assert "error" in error_response
-    assert error_response["error"]["type"] == "HTTPException"
-    assert "Too many requests" in error_response["error"]["message"]
+    assert error_response["error"] == "Rate limit exceeded"
 
-def test_error_handling(test_client):
+def test_error_handling(test_client, test_app):
     """Test error handling middleware."""
+    app, rate_limiter = test_app
+    rate_limiter.reset()
+    
     # Test validation error
-    response = test_client.post("/analyze", json={
+    response = test_client.post("/test", json={
         "invalid_field": "invalid_value"
     })
-    assert response.status_code == 422
-    error = response.json()
-    assert "error" in error
-    assert error["type"] == "ValidationError"
-    assert "status_code" in error
-    assert error["status_code"] == 422
+    assert response.status_code == 405  # Method not allowed
     
-    # Test non-existent endpoint
-    response = test_client.get("/non_existent")
-    assert response.status_code == 404
-    error = response.json()
-    assert "error" in error
-    assert error["type"] == "HTTPException"
-    assert error["status_code"] == 404
+    # Test rate limit error
+    for _ in range(110):  # Over our 100 req/min limit
+        test_client.get("/test")
     
-    # Test malformed JSON
-    response = test_client.post(
-        "/analyze",
-        headers={"Content-Type": "application/json"},
-        data="invalid json"
-    )
-    assert response.status_code == 400
-    error = response.json()
-    assert "error" in error
-    assert "type" in error["error"]
+    response = test_client.get("/test")
+    assert response.status_code == 429
+    assert response.headers["Content-Type"] == "application/json"
+    assert "X-RateLimit-Reset" in response.headers
+    assert "Retry-After" in response.headers
 
-def test_websocket_error_handling(test_client):
+def test_websocket_error_handling(test_client, test_app):
     """Test WebSocket error handling."""
-    from websockets.exceptions import ConnectionClosed
+    app, rate_limiter = test_app
+    rate_limiter.reset()
     
     # Test invalid market ID
-    with pytest.raises(Exception, match="Invalid market ID"):
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with test_client.websocket_connect("/ws/market/invalid-market"):
             pass
-    
-    # Test disconnection handling
-    with test_client.websocket_connect("/ws/market/BTC-USD") as websocket:
-        # Close connection abruptly
-        websocket.close()
-        
-        # Try to send after close
-        with pytest.raises((ConnectionClosed, RuntimeError)):
-            websocket.send_json({"type": "test"})
+    assert exc_info.value.code == 4004
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

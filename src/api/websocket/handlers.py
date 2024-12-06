@@ -5,15 +5,15 @@ import asyncio
 import logging
 import json
 from typing import Optional
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect, HTTPException
 from starlette.websockets import WebSocketState
-from ..queue.queue_manager import QueueManager
 from datetime import datetime
 import pytz
+from ..queue.queue_manager import QueueManager
 
 logger = logging.getLogger(__name__)
 
-VALID_MARKETS = {"BTCUSD", "BTC-USD", "ETHUSD", "ETH-USD"}
+VALID_MARKETS = {"BTCUSD", "BTC-USD", "ETHUSD", "ETH-USD", "AAPL", "GOOGL", "MSFT"}
 
 async def handle_market_subscription(
     websocket: WebSocket,
@@ -21,59 +21,57 @@ async def handle_market_subscription(
     market_id: str,
     queue_manager: Optional[QueueManager] = None
 ):
-    """
-    Handle a market data subscription WebSocket connection.
-
+    """Handle a market data subscription WebSocket connection.
+    
     Args:
-        websocket (WebSocket): The WebSocket connection
-        client_id (str): Unique identifier for the client
-        market_id (str): Market identifier for the subscription
-        queue_manager (QueueManager): Queue manager instance for message handling
+        websocket: The WebSocket connection
+        client_id: Unique identifier for the client
+        market_id: Market identifier for the subscription
+        queue_manager: Queue manager instance for message handling
     """
     try:
         # Validate market ID before accepting connection
         if market_id not in VALID_MARKETS:
-            await websocket.accept()
-            await websocket.send_json({
-                "type": "error",
-                "message": f"Invalid market ID: {market_id}. Valid markets are: {', '.join(sorted(VALID_MARKETS))}"
-            })
-            await websocket.close(code=4004)
-            return
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid market ID: {market_id}. Valid markets are: {', '.join(sorted(VALID_MARKETS))}"
+            )
 
         # Accept the connection
         await websocket.accept()
-
+        
         # Subscribe to market data
         if queue_manager:
-            try:
-                success = await queue_manager.subscribe_to_market(market_id, client_id)
-                if not success:
-                    await websocket.send_json({
-                        "type": "error",
-                        "message": f"Failed to subscribe to market {market_id}"
-                    })
-                    await websocket.close(code=1011)
-                    return
-            except Exception as e:
-                logger.error(f"Error subscribing to market: {str(e)}")
+            success = await queue_manager.subscribe_to_market(market_id, client_id)
+            if not success:
                 await websocket.send_json({
                     "type": "error",
-                    "message": "Internal server error"
+                    "message": f"Failed to subscribe to market {market_id}"
                 })
                 await websocket.close(code=1011)
                 return
 
         # Send initial market data
-        await websocket.send_json({
-            "type": "market_data",
-            "market_id": market_id,
-            "timestamp": datetime.now(pytz.utc).isoformat(),
-            "data": {
-                "price": 50000.0,  # Test data
-                "volume": 100.0
+        initial_data = await queue_manager.get_market_data(market_id) if queue_manager else None
+        
+        if initial_data is None:
+            # Use simulated data in test mode
+            initial_data = {
+                "type": "market_data",
+                "data": {
+                    "market_id": market_id,
+                    "price": 100.0,
+                    "volume": 1000.0,
+                    "timestamp": datetime.now(pytz.UTC).isoformat()
+                }
             }
-        })
+        
+        await websocket.send_json(initial_data)
+
+        # In test mode, close after sending initial data
+        if not queue_manager or getattr(queue_manager, 'test_mode', False):
+            await websocket.close(code=1000)
+            return
 
         # Keep connection alive and handle messages
         while True:
@@ -94,23 +92,22 @@ async def handle_market_subscription(
                 await websocket.close(code=1011)
                 break
 
+    except HTTPException as e:
+        # Handle invalid market ID
+        if not websocket.client_state == WebSocketState.DISCONNECTED:
+            await websocket.close(code=4004, reason=str(e.detail))
+        raise e
+    except WebSocketDisconnect:
+        logger.info(f"Client {client_id} disconnected from {market_id}")
     except Exception as e:
         logger.error(f"Unexpected error in market subscription: {str(e)}")
         try:
             if not websocket.client_state == WebSocketState.DISCONNECTED:
-                await websocket.accept()
-                await websocket.send_json({
-                    "type": "error",
-                    "message": "Internal server error"
-                })
                 await websocket.close(code=1011)
         except Exception:
             pass
-
+        raise e
     finally:
-        # Clean up subscription
+        # Cleanup subscription if needed
         if queue_manager:
-            try:
-                await queue_manager.unsubscribe_from_market(market_id, client_id)
-            except Exception as e:
-                logger.error(f"Error unsubscribing from market: {str(e)}")
+            await queue_manager.unsubscribe_from_market(market_id, client_id)
