@@ -7,18 +7,19 @@ ENV PYTHONUNBUFFERED=1
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including tkinter
+# Install system dependencies including tkinter and curl for healthcheck
 RUN apt-get update && apt-get install -y \
     gcc \
     python3-dev \
     python3-tk \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
+# Copy requirements directory first for better caching
+COPY requirements/ requirements/
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements/requirements-core.txt
 
 # Copy the rest of the application
 COPY . .
@@ -37,4 +38,4 @@ ENV API_HOST=0.0.0.0
 EXPOSE 8000
 
 # Set the default command to run the API server
-CMD ["python", "src/run_api.py"]
+CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

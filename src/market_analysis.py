@@ -25,8 +25,14 @@ from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.volatility import BollingerBands
 import warnings
 from ratelimit import limits, sleep_and_retry
-from .config.rate_limits import get_rate_limit_config
-from .config.technical_indicators import get_indicator_config
+
+# Add src directory to Python path
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
+from src.config.rate_limits import get_rate_limit_config
+from src.config.technical_indicators import get_indicator_config
 
 warnings.filterwarnings('ignore')
 
