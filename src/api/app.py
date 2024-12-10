@@ -19,6 +19,8 @@ from src.api.middleware.rate_limiter import RateLimiter
 from src.api.websocket.handlers import handle_market_subscription
 from src.api.queue.queue_manager import QueueManager
 from src.api.queue.redis_client import RedisClient
+from src.api.services.health_service import HealthService
+from src.api.models.health import HealthResponse
 
 def clean_float(value):
     """Convert float to JSON-serializable value, handling NaN and infinite values."""
@@ -73,16 +75,18 @@ def create_app(test_mode: bool = False) -> FastAPI:
         test_mode=test_mode
     )
 
+    # Initialize health service
+    app.health_service = HealthService(
+        redis_client=app.queue_manager.redis_client,
+        queue_manager=app.queue_manager
+    )
+
     SUPPORTED_INDICATORS = {'RSI', 'MACD', 'BB', 'STOCH'}
 
-    @app.get("/health")
+    @app.get("/health", response_model=HealthResponse)
     async def health_check():
-        """Health check endpoint."""
-        return {
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc),
-            "version": app.version
-        }
+        """Enhanced health check endpoint."""
+        return app.health_service.get_health(version=app.version)
 
     @app.post("/analyze", response_model=AnalysisResult)
     async def analyze_market(request: AnalysisRequest) -> AnalysisResult:

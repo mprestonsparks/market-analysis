@@ -19,7 +19,9 @@ RUN apt-get update && apt-get install -y \
 COPY requirements/ requirements/
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements/requirements-core.txt
+RUN pip install --no-cache-dir -r requirements/requirements-core.txt \
+    && pip install --no-cache-dir -r requirements/requirements-binance.txt \
+    && pip install --no-cache-dir -r requirements/requirements-ibrokers.txt
 
 # Copy the rest of the application
 COPY . .
