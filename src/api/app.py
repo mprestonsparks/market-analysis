@@ -3,6 +3,7 @@ FastAPI application implementation for market analysis.
 """
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from typing import Dict, Tuple
 import logging
 from datetime import datetime, timezone, timedelta
@@ -82,6 +83,39 @@ def create_app(test_mode: bool = False) -> FastAPI:
     )
 
     SUPPORTED_INDICATORS = {'RSI', 'MACD', 'BB', 'STOCH'}
+
+    # Setup Prometheus instrumentation
+    instrumentator = Instrumentator(
+        should_group_status_codes=True,
+        should_ignore_untemplated=True,
+        should_respect_env_var=True,
+        should_instrument_requests_inprogress=True,
+        excluded_handlers=["/metrics"],
+        env_var_name="ENABLE_METRICS",
+        inprogress_name="market_analysis_http_requests_inprogress",
+        inprogress_labels=True,
+    )
+
+    # Add custom metrics
+    @instrumentator.counter(
+        name="market_analysis_total_analyses",
+        documentation="Total number of market analyses performed",
+        labels={"type": "technical"}
+    )
+    def total_analyses():
+        return 0
+
+    @instrumentator.histogram(
+        name="market_analysis_calculation_duration_seconds",
+        documentation="Duration of market analysis calculations",
+        buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
+        labels={"indicator": lambda r: r.url_for("analyze_market").path_params.get("indicator", "unknown")}
+    )
+    def analysis_duration():
+        return 0
+
+    # Initialize and instrument
+    instrumentator.instrument(app).expose(app, include_in_schema=True, tags=["Monitoring"])
 
     @app.get("/health", response_model=HealthResponse)
     async def health_check():
