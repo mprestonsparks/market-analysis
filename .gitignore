@@ -1,3 +1,12 @@
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -16,123 +25,147 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual Environment
-venv/
-env/
-ENV/
-.env
-.venv
-.python-version
+# Node.js
+node_modules/
+.pnp/
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDE specific files
+# Next.js
+.next/
+out/
+
+# Testing and Coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+coverage/
+
+# IDE and Editors
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.spyderproject
+.spyproject
+.ropeproject
 
-# Docker
-.docker/
-docker-compose.override.yml
-*.env
-.env.*
-!.env.example
-
-# FastAPI
-*.log
-logs/
-log/
-
-# OS specific
-.DS_Store
-Thumbs.db
-
-# Testing
-.coverage
-.pytest_cache/
-htmlcov/
-.tox/
-.nox/
-coverage.xml
-*.cover
-.hypothesis/
-
-# Database
-*.sqlite3
-*.db
-
-# Development
-.local/
-local_settings.py
-*.local.*
-
-# Temporary files
-tmp/
-temp/
-*.tmp
+# Build and Compilation
+*.manifest
+*.spec
+.pybuilder/
+target/
+cython_debug/
+*.tsbuildinfo
+next-env.d.ts
 
 # Documentation
 docs/_build/
 site/
 
-# Jupyter Notebook
+# Jupyter
 .ipynb_checkpoints
 *.ipynb
+profile_default/
+ipython_config.py
 
-# mypy
+# Virtual Environments
+venv/
+.venv
+env/
+ENV/
+env.bak/
+venv.bak/
+.python-version
+
+# Package Managers
+poetry.lock
+Pipfile.lock
+.pdm.toml
+.pdm-python
+.pdm-build/
+__pypackages__/
+
+# Databases
+*.sqlite3
+*.db
+*.sqlite3-journal
+
+# Logs and Temporary Files
+*.log
+logs/
+log/
+tmp/
+temp/
+*.tmp
+
+# OS Specific
+.DS_Store
+Thumbs.db
+
+# Type Checkers
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.pyre/
+.pytype/
 
-# pipenv
-Pipfile.lock
-
-# poetry
-poetry.lock
-
-# Celery
+# Task Runners and Message Queues
 celerybeat-schedule
 celerybeat.pid
-
-# Redis
-*.rdb
-dump.rdb
-
-# RabbitMQ
 rabbitmq/*
 *.pid
 *.rabbitmq-dump
 
-# Data Science and ML
+# Data and Cache
 *.pkl
 *.joblib
 *.model
-.pytest_cache/
-model_checkpoints/
 *.npy
 *.npz
-.ipynb
-
-# Finance data cache
 yfinance/
 *.yfinance
 *-yf-data/
-
-# Matplotlib
 .matplotlib/
+
+# Images (except assets)
 *.png
 *.pdf
 *.svg
-!assets/*.png  # Keep tracked images in assets folder
-!assets/*.svg  # Keep tracked images in assets folder
+!assets/*.png
+!assets/*.svg
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Deployment
+.vercel
+.elasticbeanstalk/
 
 # Redis
 *.rdb
-
-# Elastic Beanstalk
-.elasticbeanstalk/
+dump.rdb
