@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Union, Literal, Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 from decimal import Decimal
@@ -153,27 +153,28 @@ class AnalysisRequest(BaseModel):
                            f"Supported indicators are: {', '.join(sorted(supported_indicators))}")
         return v
 
-    @field_validator('start_time', 'end_time')
-    def validate_times(cls, v: Optional[datetime], info):
+    @model_validator(mode='after')
+    def validate_times(cls, values):
         """Validate time range."""
-        if v:
-            # Ensure datetime is timezone-aware
-            if v.tzinfo is None:
-                v = v.replace(tzinfo=timezone.utc)
-            
-            # Validate time is not in future
-            if v > datetime.now(timezone.utc):
-                raise ValueError("Time cannot be in the future")
-            
-            # Validate end_time is after start_time
-            field_name = info.field_name
-            if field_name == 'end_time' and info.data.get('start_time'):
-                start_time = info.data['start_time']
-                if start_time.tzinfo is None:
-                    start_time = start_time.replace(tzinfo=timezone.utc)
-                if v <= start_time:
-                    raise ValueError("End time must be after start time")
-        return v
+        start_time = values.start_time
+        end_time = values.end_time
+
+        # If either time is not provided, skip validation
+        if not start_time or not end_time:
+            return values
+
+        # Ensure both times have timezone info
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=timezone.utc)
+
+        if end_time <= start_time:
+            raise ValueError("End time must be after start time")
+
+        values.start_time = start_time
+        values.end_time = end_time
+        return values
 
 class AnalysisResult(BaseModel):
     """Result of market analysis."""
