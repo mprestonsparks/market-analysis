@@ -121,6 +121,8 @@ log/
 tmp/
 temp/
 *.tmp
+*.bak
+TEMPORARY-*.md
 
 # OS Specific
 .DS_Store

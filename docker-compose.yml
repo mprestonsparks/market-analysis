@@ -25,6 +25,15 @@ services:
     networks:
       - market_analysis_net
 
+  js-test:
+    build: .
+    volumes:
+      - .:/app
+    working_dir: /app/.github/scripts
+    command: npm test
+    networks:
+      - market_analysis_net
+
 networks:
   market_analysis_net:
     driver: bridge

@@ -1,0 +1,22 @@
+name: Project V2 Item Trigger
+
+on:
+  issues:
+    types: [opened, edited, deleted, closed, reopened, labeled, unlabeled]
+  pull_request:
+    types: [opened, edited, closed, reopened, labeled, unlabeled]
+
+jobs:
+  sync_to_project:
+    name: Sync Issue/PR to Project
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run Project V2 Sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+        run: |
+          cd .github/scripts
+          npm ci
+          node sync/index.js

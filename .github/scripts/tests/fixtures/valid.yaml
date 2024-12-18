@@ -1,0 +1,13 @@
+next_available_tasks:
+  - id: 1
+    name: Task 1
+    description: First task
+    status: ready
+    priority: 1
+    blocking: [2]
+  - id: 2
+    name: Task 2
+    description: Second task
+    status: blocked
+    priority: 2
+    blocked_by: [1]

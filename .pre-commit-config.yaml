@@ -1,0 +1,19 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+    -   id: check-yaml
+        files: ^\.project/status/.*\.yaml$
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+
+-   repo: local
+    hooks:
+    -   id: validate-status-yaml
+        name: Validate Status YAML Files
+        entry: .github/scripts/utils/validate-yaml.js
+        language: node
+        files: ^\.project/status/.*\.yaml$
+        additional_dependencies:
+        - js-yaml
+        - ajv

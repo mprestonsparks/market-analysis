@@ -1,0 +1,14 @@
+{
+  "name": "github-scripts",
+  "version": "1.0.0",
+  "description": "GitHub automation scripts",
+  "type": "commonjs",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "js-yaml": "^4.1.0",
+    "ajv": "^8.12.0"
+  }
+}

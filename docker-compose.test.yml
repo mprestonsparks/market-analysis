@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: js-test
+    volumes:
+      - ./src:/app/src
+      - ./coverage:/app/coverage
+      - ./tests/infrastructure:/app/tests/infrastructure
+      - /app/node_modules/

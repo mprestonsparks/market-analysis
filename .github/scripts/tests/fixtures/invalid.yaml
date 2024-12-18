@@ -1,0 +1,4 @@
+next_available_tasks:
+  - id: "not a number"
+    name: 123
+    status: invalid

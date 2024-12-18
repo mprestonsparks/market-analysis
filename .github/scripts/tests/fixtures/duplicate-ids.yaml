@@ -1,0 +1,7 @@
+next_available_tasks:
+  - id: 1
+    name: Task 1
+    status: ready
+  - id: 1
+    name: Task 2
+    status: blocked

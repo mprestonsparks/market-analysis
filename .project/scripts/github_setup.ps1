@@ -5,6 +5,42 @@ Import-Module powershell-yaml
 
 Write-Host "Setting up GitHub integration..."
 
+# Get project ID
+$projectQuery = @"
+query {
+  user(login: "mprestonsparks") {
+    projectV2(number: 1) {
+      id
+      title
+    }
+  }
+}
+"@
+
+$projectInfo = gh api graphql -f query=$projectQuery | ConvertFrom-Json
+if (-not $projectInfo.data.user.projectV2) {
+    Write-Error "Trading System Development project not found. Please create it first."
+    Write-Host @"
+Please create a new project on GitHub with the following settings:
+1. Title: Trading System Development
+2. Template: Board
+3. Create the following columns:
+   - Ready
+   - In Progress
+   - Blocked
+   - Review
+   - Completed
+4. Link the following repositories:
+   - trade-manager
+   - trade-discovery
+   - market-analysis
+   - trade-dashboard
+"@
+    exit 1
+}
+
+$PROJECT_ID = $projectInfo.data.user.projectV2.id
+
 # Create status labels
 $labels = @(
     @{name="ready"; color="0E8A16"; description="Task is ready to be worked on"},
@@ -38,6 +74,11 @@ Priority: $($task.priority)
 Status: $($task.status)
 Blocking: $($task.blocking -join ', ')
 Prerequisites met: $($task.prerequisites_met)
+Blocked by: $($task.blocked_by -join ', ')
+Dependencies: $($task.dependencies -join ', ')
+
+Description:
+$($task.description)
 "@
             $issueResult = gh issue create --title $title --body $body
             if ($LASTEXITCODE -eq 0) {
@@ -49,10 +90,11 @@ Prerequisites met: $($task.prerequisites_met)
         }
     }
 
+    # Update YAML if modified
     if ($modified) {
-        $updatedYaml = ConvertTo-Yaml $status
-        Set-Content -Path $yamlPath -Value $updatedYaml
-        Write-Host "Updated DEVELOPMENT_STATUS.yaml with issue numbers"
+        $newYaml = ConvertTo-Yaml $status
+        Set-Content $yamlPath $newYaml
+        Write-Host "Updated $yamlPath with new issue numbers"
     }
 }
 
