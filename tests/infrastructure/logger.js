@@ -21,10 +21,10 @@ class Logger {
     }
 
     debug(message) {
-        if (process.env.DEBUG) {
+        if (process.env.DEBUG === 'true') {
             console.debug(this.formatMessage('debug', message));
         }
     }
 }
 
-export { Logger };
+module.exports = { Logger };

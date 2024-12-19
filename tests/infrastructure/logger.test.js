@@ -1,5 +1,5 @@
-import { expect, test, describe, jest } from '@jest/globals';
-import { Logger } from './logger.js';
+const { expect, test, describe } = require('@jest/globals');
+const { Logger } = require('./logger');
 
 describe('Logger', () => {
     let consoleSpy;
@@ -43,14 +43,15 @@ describe('Logger', () => {
         );
     });
 
-    test('should log debug messages only when DEBUG is set', () => {
+    test('should not log debug messages by default', () => {
         const logger = new Logger('test');
-        
-        process.env.DEBUG = '';
         logger.debug('test debug');
         expect(consoleSpy.debug).not.toHaveBeenCalled();
+    });
 
+    test('should log debug messages when DEBUG is enabled', () => {
         process.env.DEBUG = 'true';
+        const logger = new Logger('test');
         logger.debug('test debug');
         expect(consoleSpy.debug).toHaveBeenCalledWith(
             expect.stringMatching(/\[\d{4}-\d{2}-\d{2}T.*\] DEBUG \[test\] test debug/)
