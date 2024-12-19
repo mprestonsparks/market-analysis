@@ -32,7 +32,7 @@ jobs:
           
       - name: Test Event Handler
         env:
-          GITHUB_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_TYPE: ${{ github.event.inputs.event_type }}
         run: |
           cd .github/scripts

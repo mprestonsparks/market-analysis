@@ -31,7 +31,7 @@ jobs:
           
       - name: Sync to Project
         env:
-          GITHUB_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd .github/scripts
           node sync/index.js
