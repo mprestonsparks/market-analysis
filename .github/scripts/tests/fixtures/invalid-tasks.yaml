@@ -1,7 +1,0 @@
-tasks:
-  TASK-1:
-    id: TASK-1
-    title: First Task
-    status: ready
-    dependencies: [
-      # Invalid YAML - unclosed array

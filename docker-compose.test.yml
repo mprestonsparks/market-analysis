@@ -1,13 +1,43 @@
 version: '3.8'
 
 services:
-  tests:
+  infrastructure-tests:
     build:
       context: .
       dockerfile: Dockerfile
       target: js-test
     volumes:
-      - ./src:/app/src
-      - ./coverage:/app/coverage
       - ./tests/infrastructure:/app/tests/infrastructure
+      - ./.github:/app/.github
       - /app/node_modules/
+      - /app/tests/infrastructure/node_modules/
+    working_dir: /app/tests/infrastructure
+    command: npm run test:infrastructure
+
+  core-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python-test
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./coverage:/app/coverage
+      - /app/.pytest_cache/
+    command: pytest tests/core tests/api tests/models tests/utils
+
+  all-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test-base
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./.github:/app/.github
+      - ./coverage:/app/coverage
+      - /app/node_modules/
+      - /app/tests/infrastructure/node_modules/
+      - /app/.pytest_cache/
+    working_dir: /app/tests/infrastructure
+    command: sh -c "python -m pytest tests/ && cd /app/tests/infrastructure && npm run test:infrastructure"

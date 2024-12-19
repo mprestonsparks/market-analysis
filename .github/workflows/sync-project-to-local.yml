@@ -1,7 +1,7 @@
 name: Sync Project to Local Status
 
 on:
-  project_v2_item:
+  projects_v2_item:
     types: [created, edited, deleted]
 
 jobs:

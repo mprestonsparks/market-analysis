@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const { TaskDecomposition } = require('./task-decomposition.js');
-const { GitHubAPI } = require('./github.js');
-const { Logger } = require('./logger.js');
+const { TaskDecomposition } = require('./.project/status/task-decomposition.js');
+const { GitHubAPI } = require('./.github/github.js');
+const { Logger } = require('./.github/logger.js');
 
 const logger = new Logger('sync');
 
@@ -19,7 +19,10 @@ async function main() {
 }
 
 if (require.main === module) {
-    main();
+    main().catch(error => {
+        console.error(error);
+        process.exit(1);
+    });
 }
 
 module.exports = { main };

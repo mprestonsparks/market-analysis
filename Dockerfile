@@ -2,21 +2,64 @@
 FROM python:3.10-slim as python-base
 
 WORKDIR /app
-COPY pyproject.toml .
 
+# Copy dependency files
+COPY pyproject.toml .
+COPY requirements*.txt ./
+
+# Install dependencies
 RUN pip install --no-cache-dir .[test,dev]
 
-# Test stage for JavaScript tests
-FROM node:18-slim as js-test
+# JavaScript test base
+FROM node:18-slim as js-test-base
+
+WORKDIR /app/tests/infrastructure
+
+# Install JavaScript test dependencies
+COPY tests/infrastructure/package*.json ./
+RUN npm ci
+
+# Python test stage
+FROM python:3.10-slim as python-test
 
 WORKDIR /app
-COPY tests/infrastructure/package*.json ./
-RUN npm install
 
-COPY tests/infrastructure/ tests/infrastructure/
-COPY tests/infrastructure/babel.config.js ./
+# Copy Python dependencies
+COPY --from=python-base /usr/local/lib/python3.10/site-packages/ /usr/local/lib/python3.10/site-packages/
 
+# Default command (can be overridden by docker-compose)
+CMD ["pytest"]
+
+# JavaScript test stage
+FROM js-test-base as js-test
+
+WORKDIR /app/tests/infrastructure
+
+# Default command (can be overridden by docker-compose)
 CMD ["npm", "run", "test:infrastructure"]
+
+# Combined test base (for running all tests)
+FROM python:3.10-slim as test-base
+
+WORKDIR /app
+
+# Copy Python dependencies
+COPY --from=python-base /usr/local/lib/python3.10/site-packages/ /usr/local/lib/python3.10/site-packages/
+
+# Install Node.js
+RUN apt-get update && apt-get install -y \
+    nodejs \
+    npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install JavaScript test dependencies
+COPY tests/infrastructure/.github/package*.json /app/tests/infrastructure/.github/
+WORKDIR /app/tests/infrastructure/.github
+RUN npm ci
+WORKDIR /app
+
+# Default command (can be overridden by docker-compose)
+CMD ["sh", "-c", "python -m pytest tests/ && cd tests/infrastructure/.github && npm run test:infrastructure"]
 
 # Production stage
 FROM python:3.10-slim

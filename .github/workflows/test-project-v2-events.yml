@@ -25,15 +25,15 @@ jobs:
         with:
           node-version: '18'
           
-      - name: Install Dependencies
+      - name: Install Infrastructure Test Dependencies
         run: |
-          cd .github/scripts
+          cd tests/infrastructure
           npm ci
           
-      - name: Test Event Handler
+      - name: Run Infrastructure Tests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_TYPE: ${{ github.event.inputs.event_type }}
         run: |
-          cd .github/scripts
-          node sync/test-index.js
+          cd tests/infrastructure
+          npm run test:infrastructure

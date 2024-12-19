@@ -1,6 +1,6 @@
 const { readFileSync } = require('fs');
 const yaml = require('js-yaml');
-const { Logger } = require('./logger');
+const { Logger } = require('@/.github/logger');
 
 const logger = new Logger('task-decomposition');
 
