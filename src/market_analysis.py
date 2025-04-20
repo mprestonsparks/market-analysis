@@ -16,7 +16,7 @@ import logging
 import asyncio
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from sklearn.ensemble import RandomForestRegressor, IsolationForest
 from sklearn.metrics import mean_squared_error
 from scipy import stats
@@ -25,8 +25,14 @@ from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.volatility import BollingerBands
 import warnings
 from ratelimit import limits, sleep_and_retry
-from .config.rate_limits import get_rate_limit_config
-from .config.technical_indicators import get_indicator_config
+
+# Add src directory to Python path
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if src_dir not in sys.path:
+    sys.path.append(src_dir)
+
+from src.config.rate_limits import get_rate_limit_config
+from src.config.technical_indicators import get_indicator_config
 
 warnings.filterwarnings('ignore')
 
@@ -51,32 +57,51 @@ def rate_limited_fetch(symbol: str, start_date: datetime, end_date: datetime) ->
         try:
             ticker = yf.Ticker(symbol)
             data = ticker.history(start=start_date, end=end_date)
+            if data.empty:
+                raise ValueError(f"No data available for {symbol} in the specified time range")
             return data
         except Exception as e:
-            if "rate limit" in str(e).lower():
-                delay = min(yf_config['BASE_DELAY'] * (2 ** attempt), yf_config['MAX_DELAY'])
-                logging.warning(f"Rate limit hit. Waiting {delay} seconds before retry...")
-                time.sleep(delay)
-            else:
+            if attempt == yf_config['MAX_RETRIES'] - 1:
                 raise e
-    
-    raise Exception("Max retries exceeded for data fetching")
+            wait_time = (2 ** attempt) * yf_config['BASE_WAIT_TIME']
+            logger.warning(f"Attempt {attempt + 1} failed, waiting {wait_time}s before retry")
+            time.sleep(wait_time)
 
-def fetch_market_data(symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+def fetch_market_data(symbol: str, start_date: datetime, end_date: datetime, test_mode: bool = False) -> pd.DataFrame:
     """
     Fetch market data for a given symbol with rate limiting.
+    
+    Args:
+        symbol: Market symbol
+        start_date: Start date
+        end_date: End date
+        test_mode: If True, use test data instead of real market data
+        
+    Returns:
+        DataFrame with market data
     """
-    try:
-        return rate_limited_fetch(symbol, start_date, end_date)
-    except Exception as e:
-        logging.error(f"Error fetching data for {symbol}: {str(e)}")
-        raise
+    if test_mode:
+        # Import test utilities only in test mode
+        try:
+            from tests.utils.test_data import get_test_market_data, VALID_TEST_SYMBOLS
+            if symbol not in VALID_TEST_SYMBOLS:
+                raise ValueError(f"Invalid test symbol: {symbol}. Valid test symbols are: {VALID_TEST_SYMBOLS}")
+            return get_test_market_data(symbol, start_date, end_date)
+        except ImportError:
+            raise ImportError("Test utilities not available. Make sure tests/utils is in your Python path.")
+    return rate_limited_fetch(symbol, start_date, end_date)
 
 class MarketAnalyzer:
-    """
-    Main class for market analysis functionality.
-    """
-    def __init__(self, symbol: str, indicator_config: Dict = None):
+    """Main class for market analysis functionality."""
+    
+    def __init__(self, symbol: str, indicator_config: Dict = None, test_mode: bool = False):
+        """Initialize MarketAnalyzer.
+        
+        Args:
+            symbol: Market symbol to analyze
+            indicator_config: Optional custom indicator configuration
+            test_mode: If True, use test data instead of real market data
+        """
         self.symbol = symbol
         self.data = None
         self.states = []
@@ -85,6 +110,7 @@ class MarketAnalyzer:
         self.current_state = None
         self.state_description = None
         self.state_characteristics = None
+        self.test_mode = test_mode
         
     def get_state_adjusted_config(self):
         """
@@ -125,12 +151,12 @@ class MarketAnalyzer:
             raise ValueError("No data available. Call fetch_data first.")
             
         # Calculate features for PCA
-        returns = self.data['Close'].pct_change()
+        returns = self.data['close'].pct_change()
         volatility = returns.rolling(window=20).std()
-        volume = self.data['Volume'] / self.data['Volume'].rolling(window=50).mean()
+        volume = self.data['volume'] / self.data['volume'].rolling(window=50).mean()
         
         # Calculate trend strength using price momentum and moving average crossovers
-        price = self.data['Close']
+        price = self.data['close']
         sma_20 = price.rolling(window=20).mean()
         sma_50 = price.rolling(window=50).mean()
         trend_strength = ((price - sma_20) / price + (sma_20 - sma_50) / sma_20).fillna(0)
@@ -156,24 +182,35 @@ class MarketAnalyzer:
         self.pca = PCA(n_components=2)
         self.pca_result = self.pca.fit_transform(features_scaled)
         
+        # Ensure we have enough unique points for the requested number of clusters
+        unique_points = np.unique(self.pca_result, axis=0)
+        actual_n_states = min(n_states, len(unique_points))
+        
         # Cluster states using PCA components
         from sklearn.cluster import KMeans
-        kmeans = KMeans(n_clusters=n_states, random_state=42)
+        kmeans = KMeans(n_clusters=actual_n_states, random_state=42)
         self.states = kmeans.fit_predict(self.pca_result)
         
         # Calculate state characteristics for dynamic threshold adjustment
         self.state_characteristics = {}
-        for state in range(n_states):
+        for state in range(actual_n_states):
             state_mask = self.states == state
+            if not np.any(state_mask):  # Skip if no points in this state
+                continue
+                
             state_features = features[state_mask]
             
+            # Calculate means with proper error handling
+            def safe_mean(arr):
+                return np.nan if len(arr) == 0 else np.mean(arr)
+            
             self.state_characteristics[state] = {
-                'volatility': state_features['volatility'].mean(),
-                'trend_strength': state_features['trend_strength'].mean(),
-                'volume': state_features['volume'].mean(),
-                'return_dispersion': state_features['return_dispersion'].mean(),
-                'component_1': self.pca_result[state_mask, 0].mean(),
-                'component_2': self.pca_result[state_mask, 1].mean()
+                'volatility': safe_mean(state_features['volatility']),
+                'trend_strength': safe_mean(state_features['trend_strength']),
+                'volume': safe_mean(state_features['volume']),
+                'return_dispersion': safe_mean(state_features['return_dispersion']),
+                'component_1': safe_mean(self.pca_result[state_mask, 0]),
+                'component_2': safe_mean(self.pca_result[state_mask, 1])
             }
         
         # Set current state and its characteristics
@@ -189,14 +226,14 @@ class MarketAnalyzer:
             
         # RSI
         rsi = RSIIndicator(
-            close=self.data['Close'],
+            close=self.data['close'],
             window=config['rsi']['window']
         )
         self.technical_indicators['rsi'] = rsi.rsi()
         
         # MACD
         macd = MACD(
-            close=self.data['Close'],
+            close=self.data['close'],
             window_fast=config['macd']['fast_period'],
             window_slow=config['macd']['slow_period'],
             window_sign=config['macd']['signal_period']
@@ -206,9 +243,9 @@ class MarketAnalyzer:
         
         # Stochastic
         stoch = StochasticOscillator(
-            high=self.data['High'],
-            low=self.data['Low'],
-            close=self.data['Close'],
+            high=self.data['high'],
+            low=self.data['low'],
+            close=self.data['close'],
             window=config['stochastic']['k_period'],
             smooth_window=config['stochastic']['d_period']
         )
@@ -217,7 +254,7 @@ class MarketAnalyzer:
         
         # Bollinger Bands
         bb = BollingerBands(
-            close=self.data['Close'],
+            close=self.data['close'],
             window=config['bollinger']['window'],
             window_dev=config['bollinger']['num_std']
         )
@@ -225,10 +262,13 @@ class MarketAnalyzer:
         self.technical_indicators['bb_low'] = bb.bollinger_lband()
         self.technical_indicators['bb_mid'] = bb.bollinger_mavg()
 
-    def generate_trading_signals(self) -> Dict:
+    def generate_trading_signals(self, thresholds=None) -> Dict:
         """
         Generate trading signals based on technical indicators and dynamic state-based thresholds.
         Returns signals for the entire time series.
+        
+        Args:
+            thresholds: Optional signal generation thresholds. If None, uses default configuration.
         """
         if not self.technical_indicators:
             self.calculate_technical_indicators()
@@ -237,6 +277,21 @@ class MarketAnalyzer:
             self.identify_market_states()
             
         config = self.get_state_adjusted_config()
+        
+        # Override config with provided thresholds if any
+        if thresholds:
+            config['rsi']['oversold'] = thresholds.rsi_oversold
+            config['rsi']['overbought'] = thresholds.rsi_overbought
+            config['rsi']['weight'] = thresholds.rsi_weight
+            
+            config['macd']['threshold_std'] = thresholds.macd_threshold_std
+            config['macd']['weight'] = thresholds.macd_weight
+            
+            config['stochastic']['oversold'] = thresholds.stoch_oversold
+            config['stochastic']['overbought'] = thresholds.stoch_overbought
+            config['stochastic']['weight'] = thresholds.stoch_weight
+            
+            self.indicator_config['min_signal_confidence'] = thresholds.min_confidence
         
         # Initialize signal arrays
         length = len(self.data)
@@ -251,9 +306,8 @@ class MarketAnalyzer:
             rsi = self.technical_indicators['rsi'].iloc[i]
             rsi_history = self.technical_indicators['rsi'].iloc[i-historical_window:i]
             
-            rsi_threshold = config['rsi']['threshold_percentile']
-            oversold = np.percentile(rsi_history, 100 - rsi_threshold)
-            overbought = np.percentile(rsi_history, rsi_threshold)
+            oversold = config['rsi']['oversold']
+            overbought = config['rsi']['overbought']
             
             rsi_signal = 1 if rsi < oversold else -1 if rsi > overbought else 0
             rsi_strength = abs((rsi - 50) / 50)
@@ -273,11 +327,10 @@ class MarketAnalyzer:
             stoch_k = self.technical_indicators['stoch_k'].iloc[i]
             stoch_history = self.technical_indicators['stoch_k'].iloc[i-historical_window:i]
             
-            stoch_threshold = config['stochastic']['threshold_percentile']
-            stoch_oversold = np.percentile(stoch_history, 100 - stoch_threshold)
-            stoch_overbought = np.percentile(stoch_history, stoch_threshold)
+            oversold = config['stochastic']['oversold']
+            overbought = config['stochastic']['overbought']
             
-            stoch_signal = 1 if stoch_k < stoch_oversold else -1 if stoch_k > stoch_overbought else 0
+            stoch_signal = 1 if stoch_k < oversold else -1 if stoch_k > overbought else 0
             stoch_strength = min(abs(stoch_k - 50) / 50, 1.0)
             
             # Calculate weighted composite signal
@@ -294,7 +347,7 @@ class MarketAnalyzer:
             composite_signals[i] = weighted_signal / total_weight
             
             # Calculate confidence
-            volume_scale = self.data['Volume'].iloc[i] / self.data['Volume'].iloc[i-20:i].mean()
+            volume_scale = self.data['volume'].iloc[i] / self.data['volume'].iloc[i-20:i].mean()
             confidence_scale = 1 + 0.2 * volume_scale  # Simple volume-based scaling
             confidence_values[i] = confidence_scale * min(
                 max(abs(composite_signals[i]), self.indicator_config['min_signal_confidence']),
@@ -432,7 +485,7 @@ class MarketAnalyzer:
         """Plot price and volume with state backgrounds."""
         # Plot price
         ax2 = ax.twinx()
-        ax.plot(self.data.index, self.data['Close'], 'b-', label='Price', zorder=2)
+        ax.plot(self.data.index, self.data['close'], 'b-', label='Price', zorder=2)
         
         # Add state backgrounds if available
         if show_states and hasattr(self, 'states'):
@@ -446,7 +499,7 @@ class MarketAnalyzer:
                               label=f'State {state}')
         
         # Plot volume
-        volume_normalized = self.data['Volume'] / self.data['Volume'].max()
+        volume_normalized = self.data['volume'] / self.data['volume'].max()
         ax2.fill_between(self.data.index, 0, volume_normalized, color='gray', alpha=0.3, label='Volume')
         
         ax.set_title('Price and Volume with Market States')
@@ -494,7 +547,7 @@ class MarketAnalyzer:
             
         elif indicator_type == 'Bollinger Bands':
             # Plot Bollinger Bands
-            ax.plot(self.data.index, self.data['Close'], 'k-', label='Price', alpha=0.5)
+            ax.plot(self.data.index, self.data['close'], 'k-', label='Price', alpha=0.5)
             ax.plot(self.data.index, self.technical_indicators['bb_high'], 'r-', label='Upper Band')
             ax.plot(self.data.index, self.technical_indicators['bb_mid'], 'b-', label='Middle Band')
             ax.plot(self.data.index, self.technical_indicators['bb_low'], 'g-', label='Lower Band')
@@ -583,6 +636,36 @@ class MarketAnalyzer:
         ax.set_title('Feature Importance in First Principal Component')
         ax.set_xlabel('Absolute Coefficient Value')
         
-    def fetch_data(self, start_date: datetime, end_date: datetime):
-        """Fetch market data for analysis."""
-        self.data = fetch_market_data(self.symbol, start_date, end_date)
+    def _standardize_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Standardize column names from various data sources."""
+        column_map = {
+            'Close': 'close',
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Volume': 'volume',
+            'Adj Close': 'adj_close'
+        }
+        return data.rename(columns=column_map)
+
+    def fetch_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        """Fetch market data for analysis.
+        
+        Args:
+            start_date: Start date for data fetch
+            end_date: End date for data fetch
+            
+        Returns:
+            DataFrame with market data
+        """
+        try:
+            data = fetch_market_data(self.symbol, start_date, end_date, self.test_mode)
+            if data is None or len(data) == 0:
+                raise ValueError(f"No data available for {self.symbol}")
+            
+            # Standardize column names
+            self.data = self._standardize_columns(data)
+            return self.data
+        except Exception as e:
+            logger.error(f"Error fetching data for {self.symbol}: {str(e)}")
+            raise

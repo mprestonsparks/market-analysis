@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - API_PORT=8000
+      - API_HOST=0.0.0.0
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+    command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - market_analysis_net
+
+  test:
+    build: .
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - .:/app
+    command: python -m pytest tests/ -v
+    networks:
+      - market_analysis_net
+
+networks:
+  market_analysis_net:
+    driver: bridge

@@ -1,0 +1,32 @@
+# Core API Dependencies
+fastapi>=0.104.1
+uvicorn>=0.24.0
+pydantic>=2.5.2
+pydantic-settings>=2.0.0
+slowapi>=0.1.0
+yfinance>=0.2.32
+ratelimit>=2.2.1
+
+# Data Processing and Analysis
+pandas>=2.1.3
+numpy>=1.26.2
+scikit-learn>=1.3.2
+scipy>=1.10.0
+ta>=0.10.0
+
+# Visualization
+matplotlib>=3.7.0
+
+# Queue Management
+redis>=5.0.1
+aio_pika>=9.3.1
+
+# WebSocket Support
+websockets>=12.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.2
+httpx>=0.25.2
+pytest-cov>=4.1.0
+psutil>=5.9.6

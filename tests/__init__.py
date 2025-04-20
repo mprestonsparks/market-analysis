@@ -1,0 +1,3 @@
+"""
+Market Analysis Test Suite
+"""
