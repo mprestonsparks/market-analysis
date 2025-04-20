@@ -1,0 +1,26 @@
+FROM python:3.9-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy and install core requirements
+COPY requirements/requirements-core.txt /app/requirements-core.txt
+RUN pip install --no-cache-dir -r /app/requirements-core.txt
+
+# Copy and install IBKR provider requirements
+COPY requirements/requirements-ibrokers.txt /app/requirements-ibrokers.txt
+RUN pip install --no-cache-dir -r /app/requirements-ibrokers.txt
+
+# Copy project source code
+COPY src/ /app/src
+
+# Set Python path
+ENV PYTHONPATH=/app/src:$PYTHONPATH
+
+# Default entrypoint for Python execution
+ENTRYPOINT ["python"]
