@@ -192,6 +192,13 @@ The tool implements rate limiting for the YFinance API to prevent exceeding usag
 4. Push to the branch
 5. Create a Pull Request
 
+## Airflow Integration
+This project is integrated with the [Airflow Monorepo](https://github.com/mprestonsparks/airflow-hub) via containerized tasks.
+See [AIRFLOW_INTEGRATION.md](AIRFLOW_INTEGRATION.md) for details on:
+- Docker image (`market-analysis:latest`)
+- DAG location in Airflow Hub
+- Required Airflow connections (`market_analysis_ibkr`, `market_analysis_binance`)
+
 ## License
 
 This project is the private property of M. Preston Sparks. All rights reserved.
