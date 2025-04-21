@@ -43,11 +43,26 @@ def valid_analysis_request():
 
 def test_health_check():
     """Test the health check endpoint."""
-    response = client.get("/health")
+    response = client.get("/health/live")
     assert response.status_code == 200
     data = response.json()
+    assert data["status"] == "alive"
+
+def test_readiness_check():
+    """Test the readiness check endpoint."""
+    response = client.get("/health/ready")
+    assert response.status_code == 200
+    data = response.json()
+    assert "system" in data["checks"]
+    assert "dependencies" in data["checks"]
+
+def test_root_endpoint():
+    """Test the root endpoint."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["service"] == "Market Analysis API"
     assert data["status"] == "healthy"
-    assert "timestamp" in data
     assert data["version"] == "1.0.0"
 
 def test_analyze_valid_request(valid_analysis_request):
