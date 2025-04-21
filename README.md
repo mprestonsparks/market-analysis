@@ -88,7 +88,7 @@ docker run -v $(pwd):/app market-analysis --symbol AAPL --days 365
 
 ## Examples
 
-Check out the `examples` directory for sample scripts demonstrating various analysis scenarios:
+Check out the `examples` directory for sample scripts demonstrating various analysis scenarios.
 
 - `run_analysis.py`: Complete example showing basic usage of all features
 
@@ -191,6 +191,13 @@ The tool implements rate limiting for the YFinance API to prevent exceeding usag
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
+
+### Running Tests
+Run the test suite (depending on your local pytest plugins you may need to disable incompatible plugins):
+```bash
+# Skip pytest_asyncio if causing import issues
+pytest -p no:pytest_asyncio
+```
 
 ## Airflow Integration
 This project is integrated with the [Airflow Monorepo](https://github.com/mprestonsparks/airflow-hub) via containerized tasks.
