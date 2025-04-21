@@ -46,8 +46,20 @@ Or install locally with pip:
 pip install -r requirements.txt
 ```
 
-## Usage
+### Docker Compose
 
+Use the provided docker-compose.yml to run the API server and execute tests:
+
+```bash
+# Start the API service
+docker-compose up --build api
+
+# Run the test suite
+docker-compose up --build test
+```
+
+## Usage
+## Command Line Usage
 The market analysis tool can be run from the command line with various options:
 
 ```bash
@@ -94,11 +106,18 @@ Check out the `examples` directory for sample scripts demonstrating various anal
 
 ## Documentation
 
-- [API Reference](docs/api_reference.md) - Detailed documentation of the REST API endpoints and usage
-- [State-Aware Trading](docs/state_aware_trading.md) - Technical details of the state-aware trading system
-- [Developer Guide](docs/dev/README.md) - Guide for developers contributing to the project
+-- [API Reference](docs/api_reference.md) - Detailed documentation of the REST API endpoints and usage
+-- [State-Aware Trading](docs/state_aware_trading.md) - Technical details of the state-aware trading system
+-- [Developer Guide](docs/dev/README.md) - Guide for developers contributing to the project
 
-## Usage
+## Airflow Integration
+For integration with Apache Airflow, refer to [AIRFLOW_INTEGRATION.md](AIRFLOW_INTEGRATION.md). This document covers:
+- Docker image build and tag (`market-analysis:latest`)
+- Required Airflow connections (`market_analysis_ibkr`, `market_analysis_binance`)
+- DAG location (`dags/market-analysis/dag_market_analysis_ingestion.py`)
+- Example `DockerOperator` configuration
+
+## API & Library Usage
 
 The market analysis tool can be used either through the REST API or as a Python library:
 
@@ -125,7 +144,7 @@ See the [API Reference](docs/api_reference.md) for detailed documentation.
 
 ### Python Library
 
-The market analysis tool can be run from the command line with various options:
+You can also import and use the tool as a Python library in your own code. See the examples under `examples/`.
 
 ```bash
 # Basic usage - analyze last 365 days of AAPL
@@ -193,18 +212,17 @@ The tool implements rate limiting for the YFinance API to prevent exceeding usag
 5. Create a Pull Request
 
 ### Running Tests
-Run the test suite (depending on your local pytest plugins you may need to disable incompatible plugins):
+Run the test suite locally:
 ```bash
-# Skip pytest_asyncio if causing import issues
+# If pytest_asyncio causes issues, disable it
 pytest -p no:pytest_asyncio
 ```
+Or use Docker Compose for an isolated test environment:
+```bash
+docker-compose up --build --abort-on-container-exit --exit-code-from test test
+```
 
-## Airflow Integration
-This project is integrated with the [Airflow Monorepo](https://github.com/mprestonsparks/airflow-hub) via containerized tasks.
-See [AIRFLOW_INTEGRATION.md](AIRFLOW_INTEGRATION.md) for details on:
-- Docker image (`market-analysis:latest`)
-- DAG location in Airflow Hub
-- Required Airflow connections (`market_analysis_ibkr`, `market_analysis_binance`)
+<!-- Airflow Integration details are provided above under Documentation -->
 
 ## License
 
