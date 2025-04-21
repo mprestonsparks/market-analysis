@@ -76,6 +76,10 @@ class SignalThresholds(BaseModel):
     min_signal_strength: float = Field(default=0.1, ge=0.0, le=1.0)
     min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    def get(self, key: str, default: float = None) -> float:
+        """Get a threshold value by key."""
+        return getattr(self, key, default)
+
     @model_validator(mode='after')
     def validate_thresholds(cls, values):
         """Validate threshold relationships"""
@@ -127,64 +131,56 @@ class TradingSignal(BaseModel):
         return v.upper()
 
 class AnalysisRequest(BaseModel):
-    """Market analysis request model."""
-    symbol: str = Field(..., min_length=1, description="Trading symbol (e.g., AAPL)")
-    indicators: List[str] = Field(default=['RSI', 'MACD', 'BB'], description="List of technical indicators to calculate")
-    state_analysis: bool = Field(default=True, description="Whether to perform state analysis")
-    num_states: Optional[int] = Field(default=3, ge=1, le=10, description="Number of market states to identify")
-    start_time: Optional[datetime] = Field(default=None, description="Analysis start time")
-    end_time: Optional[datetime] = Field(default=None, description="Analysis end time")
-    thresholds: Optional[SignalThresholds] = Field(default=None, description="Custom signal thresholds")
-
-    @field_validator('symbol')
-    def validate_symbol(cls, v):
-        """Validate trading symbol is not empty"""
-        if not v.strip():
-            raise ValueError("Trading symbol cannot be empty")
-        return v.upper()
-
-    @field_validator('indicators')
-    def validate_indicators(cls, v: List[str]) -> List[str]:
-        """Validate technical indicators."""
-        supported_indicators = {'RSI', 'MACD', 'STOCH', 'BB'}  # Include BB for test compatibility
-        unsupported = set(v) - supported_indicators
-        if unsupported:
-            raise ValueError(f"Unsupported indicators: {', '.join(sorted(unsupported))}. "
-                           f"Supported indicators are: {', '.join(sorted(supported_indicators))}")
-        return v
+    """Model for market analysis request."""
+    symbol: str
+    indicators: List[str] = Field(default=["RSI", "MACD", "BB"])
+    state_analysis: bool = True
+    num_states: int = Field(default=3, ge=2, le=5)
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    thresholds: Optional[SignalThresholds] = None
 
     @model_validator(mode='after')
-    def validate_times(cls, values):
-        """Validate time range."""
-        start_time = values.start_time
-        end_time = values.end_time
-
-        # If either time is not provided, skip validation
-        if not start_time or not end_time:
-            return values
-
-        # Ensure both times have timezone info
-        if start_time.tzinfo is None:
-            start_time = start_time.replace(tzinfo=timezone.utc)
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=timezone.utc)
-
-        if end_time <= start_time:
-            raise ValueError("End time must be after start time")
-
-        values.start_time = start_time
-        values.end_time = end_time
+    def validate_dates(cls, values):
+        """Validate start and end times."""
+        if values.start_time and values.end_time:
+            if values.end_time < values.start_time:
+                raise ValueError("End time must be after or equal to start time")
         return values
 
 class AnalysisResult(BaseModel):
-    """Result of market analysis."""
-    symbol: str = Field(..., min_length=1)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    current_price: float = Field(..., gt=0)
+    """Model for market analysis result."""
+    symbol: str
+    timestamp: datetime
+    current_price: Optional[Decimal] = None
     technical_indicators: List[TechnicalIndicator] = Field(default_factory=list)
-    market_state: Optional[MarketState] = None
-    latest_signal: Optional[TradingSignal] = None
-    historical_signals: List[TradingSignal] = Field(default_factory=list)
+    market_states: List[MarketState] = Field(default_factory=list)
+    signals: List[TradingSignal] = Field(default_factory=list)
+
+    def __init__(self, **data):
+        """Initialize AnalysisResult."""
+        if "market_state" in data:
+            data["market_states"] = [data.pop("market_state")]
+        if "latest_signal" in data:
+            data["signals"] = [data.pop("latest_signal")]
+            if "historical_signals" in data:
+                data["signals"].extend(data.pop("historical_signals"))
+        super().__init__(**data)
+
+    @property
+    def market_state(self) -> Optional[MarketState]:
+        """Get the current market state."""
+        return self.market_states[0] if self.market_states else None
+
+    @property
+    def latest_signal(self) -> Optional[TradingSignal]:
+        """Get the latest trading signal."""
+        return self.signals[0] if self.signals else None
+
+    @property
+    def historical_signals(self) -> List[TradingSignal]:
+        """Get historical trading signals."""
+        return self.signals[1:] if len(self.signals) > 1 else []
 
     @field_validator('timestamp')
     def ensure_timezone(cls, v):

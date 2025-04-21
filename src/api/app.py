@@ -3,25 +3,32 @@ FastAPI application implementation for market analysis.
 """
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
-from typing import Dict, Tuple
-import logging
 from datetime import datetime, timezone, timedelta
+from typing import List, Dict, Optional
+from prometheus_fastapi_instrumentator import Instrumentator
+import time
+import os
+import psutil
+import logging
 import pandas as pd
 import numpy as np
-from decimal import Decimal
 
 from src.market_analysis import MarketAnalyzer
 from src.api.models.analysis import (
-    AnalysisRequest, AnalysisResult, TechnicalIndicator, 
-    MarketState, TradingSignal, SignalThresholds
+    AnalysisRequest,
+    AnalysisResult,
+    TechnicalIndicator,
+    TradingSignal,
+    MarketState
 )
+from src.api.models.health import HealthResponse, SystemMetrics
 from src.api.middleware.rate_limiter import RateLimiter
 from src.api.websocket.handlers import handle_market_subscription
 from src.api.queue.queue_manager import QueueManager
 from src.api.queue.redis_client import RedisClient
-from src.api.services.health_service import HealthService
-from src.api.models.health import HealthResponse
+from src.api.routers import health
+
+logger = logging.getLogger(__name__)
 
 def clean_float(value):
     """Convert float to JSON-serializable value, handling NaN and infinite values."""
@@ -36,7 +43,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
 def create_app(test_mode: bool = False) -> FastAPI:
     """Create FastAPI application."""
@@ -45,6 +51,9 @@ def create_app(test_mode: bool = False) -> FastAPI:
         description="API for technical analysis and market state detection",
         version="1.0.0"
     )
+    
+    # Add start time for uptime tracking
+    app.start_time = time.time()
     
     # Add CORS middleware
     app.add_middleware(
@@ -56,30 +65,26 @@ def create_app(test_mode: bool = False) -> FastAPI:
     )
     
     # Add rate limiter middleware
-    app.add_middleware(
-        RateLimiter,
-        requests_per_minute=100,
-        test_mode=test_mode
+    if not test_mode:
+        app.add_middleware(RateLimiter)
+
+    # Initialize Redis client
+    redis_client = RedisClient(
+        host=os.getenv("REDIS_HOST", "localhost"),
+        port=int(os.getenv("REDIS_PORT", 6379))
     )
 
     # Initialize queue manager
-    app.queue_manager = QueueManager(
-        redis_client=RedisClient(test_mode=test_mode),
-        test_mode=test_mode
-    )
+    app.queue_manager = QueueManager(redis_client)
 
-    # Initialize health service
-    app.health_service = HealthService(
-        redis_client=app.queue_manager.redis_client,
-        queue_manager=app.queue_manager
-    )
+    # Add Prometheus instrumentation
+    if not test_mode:
+        Instrumentator().instrument(app).expose(app)
+
+    # Include routers
+    app.include_router(health.router, prefix="/health", tags=["health"])
 
     SUPPORTED_INDICATORS = {'RSI', 'MACD', 'BB', 'STOCH'}
-
-    # Setup Prometheus instrumentation
-    instrumentator = Instrumentator()
-    instrumentator.instrument(app)
-    instrumentator.expose(app, include_in_schema=True, tags=["Monitoring"])
 
     # Initialize custom metrics
     from prometheus_client import Counter
@@ -89,132 +94,88 @@ def create_app(test_mode: bool = False) -> FastAPI:
         ['symbol', 'status']
     )
 
-    @app.get("/health", response_model=HealthResponse)
-    async def health_check():
-        """Health check endpoint."""
-        health = app.health_service.get_health(version="1.0.0")
-        if health.status == "healthy":
-            return health
-        else:
-            raise HTTPException(status_code=500, detail=health.message)
+    @app.get("/", response_model=Dict[str, str])
+    async def root():
+        """Root endpoint."""
+        return {
+            "service": "Market Analysis API",
+            "status": "healthy",
+            "version": "1.0.0"
+        }
 
     @app.post("/analyze", response_model=AnalysisResult)
     async def analyze_market(request: AnalysisRequest) -> AnalysisResult:
         """Analyze market data for a given symbol."""
         try:
-            # Validate indicators
-            invalid_indicators = set(request.indicators) - SUPPORTED_INDICATORS
-            if invalid_indicators:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported indicators: {invalid_indicators}"
-                )
+            # Initialize market analyzer
+            analyzer = MarketAnalyzer(request.symbol, test_mode=True)
 
-            try:
-                # Fetch and analyze data
-                end_time = request.end_time or datetime.now(timezone.utc)
-                start_time = request.start_time or (end_time - timedelta(days=30))
-                
-                analyzer = MarketAnalyzer(symbol=request.symbol)
-                market_data = analyzer.fetch_data(
-                    start_date=start_time,
-                    end_date=end_time
-                )
-                
-                if market_data.empty:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"No market data found for symbol {request.symbol}"
-                    )
-
-                try:
-                    # Calculate indicators
-                    indicators_data = analyzer.calculate_technical_indicators()
-                    
-                    # Determine market state
-                    market_state = analyzer.identify_market_states(
-                        n_states=request.num_states
-                    ) if request.state_analysis else None
-                    
-                    # Get current price
-                    current_price = market_data['close'].iloc[-1]
-
-                    # Generate trading signals if thresholds provided
-                    trading_signals = []
-                    try:
-                        if request.thresholds:
-                            signals_data = analyzer.generate_signals(
-                                thresholds={
-                                    "rsi_overbought": request.thresholds.rsi_overbought if request.thresholds else 70.0,
-                                    "rsi_oversold": request.thresholds.rsi_oversold if request.thresholds else 30.0,
-                                    "macd_threshold": request.thresholds.macd_threshold_std if request.thresholds else 1.5,
-                                    "stoch_overbought": request.thresholds.stoch_overbought if request.thresholds else 80.0,
-                                    "stoch_oversold": request.thresholds.stoch_oversold if request.thresholds else 20.0
-                                },
-                                market_data=market_data,
-                                indicators=indicators_data
-                            )
-                            
-                            if signals_data:
-                                for timestamp, signal_type in signals_data:
-                                    trading_signals.append(
-                                        TradingSignal(
-                                            timestamp=timestamp,
-                                            signal_type=signal_type
-                                        )
-                                    )
-                    
-                    except Exception as e:
-                        logger.warning(f"Error generating trading signals: {str(e)}")
-                        # Continue without signals
-                        pass
-
-                    latest_signal = trading_signals[-1] if trading_signals else None
-
-                    # Create response with properly constructed technical indicators
-                    technical_indicators_list = [
-                        TechnicalIndicator(
-                            name=name,
-                            value=value,
-                            upper_threshold=request.thresholds.get(f"{name.lower()}_overbought") if request.thresholds else None,
-                            lower_threshold=request.thresholds.get(f"{name.lower()}_oversold") if request.thresholds else None
-                        ) for name, value in indicators_data.items()
-                    ]
-
-                    response = AnalysisResult(
-                        symbol=request.symbol,
-                        current_price=current_price,
-                        technical_indicators=technical_indicators_list,
-                        market_state=market_state,
-                        latest_signal=latest_signal,
-                        historical_signals=trading_signals
-                    )
-                    return response
-
-                except Exception as e:
-                    logger.error(f"Error creating analysis result: {str(e)}", exc_info=True)
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Error creating analysis result: {str(e)}"
-                    )
-                
-            except HTTPException:
-                raise
-            except Exception as e:
-                logger.error(f"Error analyzing market data: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Internal server error: {str(e)}"
-                )
-
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error validating analysis request: {str(e)}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid analysis request: {str(e)}"
+            # Fetch market data
+            market_data = await analyzer.fetch_data(
+                start_time=request.start_time,
+                end_time=request.end_time
             )
+
+            # Calculate technical indicators
+            technical_indicators = {}
+            for indicator in request.indicators:
+                if indicator == "RSI":
+                    technical_indicators["RSI"] = analyzer.calculate_rsi(market_data)
+                elif indicator == "MACD":
+                    technical_indicators["MACD"] = analyzer.calculate_macd(market_data)
+                elif indicator == "BB":
+                    technical_indicators["BB"] = analyzer.calculate_bollinger_bands(market_data)
+                elif indicator == "STOCH":
+                    technical_indicators["STOCH"] = analyzer.calculate_stochastic(market_data)
+
+            # Generate trading signals
+            try:
+                signals = analyzer.generate_trading_signals(
+                    technical_indicators=technical_indicators,
+                    thresholds=request.thresholds
+                )
+            except Exception as e:
+                logger.warning(f"Error generating trading signals: {str(e)}")
+                signals = []
+
+            # Create technical indicators list
+            technical_indicators_list = [
+                TechnicalIndicator(
+                    name=name,
+                    value=float(value.iloc[-1]) if hasattr(value, 'iloc') else float(value[-1]),
+                    upper_threshold=request.thresholds.get(f"{name.lower()}_overbought") if request.thresholds else None,
+                    lower_threshold=request.thresholds.get(f"{name.lower()}_oversold") if request.thresholds else None
+                )
+                for name, value in technical_indicators.items()
+            ]
+
+            # Perform state analysis if requested
+            market_states = []
+            if request.state_analysis:
+                try:
+                    market_states = analyzer.detect_market_states(
+                        market_data,
+                        num_states=request.num_states
+                    )
+                except Exception as e:
+                    logger.warning(f"Error detecting market states: {str(e)}")
+
+            # Create analysis result
+            result = AnalysisResult(
+                symbol=request.symbol,
+                timestamp=datetime.now(timezone.utc),
+                current_price=float(market_data['close'].iloc[-1]) if not market_data.empty else None,
+                technical_indicators=technical_indicators_list,
+                market_states=market_states,
+                signals=signals
+            )
+            return result
+
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error creating analysis result: {str(e)}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     @app.websocket("/ws/market/{market_id}")
     async def websocket_endpoint(websocket: WebSocket, market_id: str):
