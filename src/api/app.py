@@ -82,7 +82,7 @@ def create_app(test_mode: bool = False) -> FastAPI:
         Instrumentator().instrument(app).expose(app)
 
     # Include routers
-    app.include_router(health.router, prefix="/health", tags=["health"])
+    app.include_router(health, prefix="/health", tags=["health"])
 
     SUPPORTED_INDICATORS = {'RSI', 'MACD', 'BB', 'STOCH'}
 

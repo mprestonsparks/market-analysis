@@ -39,29 +39,14 @@ class InteractiveBrokersProvider(MarketDataProvider):
             )
 
     async def fetch_data(self, symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-        """Fetch historical market data from Interactive Brokers.
-        
-        Args:
-            symbol: Market symbol
-            start_date: Start date
-            end_date: End date
-            
-        Returns:
-            DataFrame with market data
-        """
+        """Fetch historical market data from Interactive Brokers (async)."""
         await self._ensure_connection()
-        
-        # Import here to avoid loading IB dependencies unless needed
         from ib_insync import Contract, util
-        
-        # Create contract
         contract = Contract()
         contract.symbol = symbol
         contract.secType = 'STK'
         contract.exchange = 'SMART'
         contract.currency = 'USD'
-        
-        # Fetch historical data
         bars = await self.connection.reqHistoricalDataAsync(
             contract,
             endDateTime=end_date,
@@ -70,15 +55,27 @@ class InteractiveBrokersProvider(MarketDataProvider):
             whatToShow='TRADES',
             useRTH=True
         )
-        
-        # Convert to DataFrame
         df = util.df(bars)
         if df.empty:
             raise ValueError(f"No data available for {symbol}")
-        
-        # Standardize column names
         df.columns = [col.lower() for col in df.columns]
         return df
+
+    def fetch_data_sync(self, symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        """
+        Synchronous wrapper for fetch_data (for CLI/DAG/Operator use).
+        Calls async fetch_data using asyncio.run if not already in an event loop.
+        """
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop and loop.is_running():
+            # In an event loop: run as task
+            return loop.run_until_complete(self.fetch_data(symbol, start_date, end_date))
+        else:
+            return asyncio.run(self.fetch_data(symbol, start_date, end_date))
 
     async def get_real_time_data(self, symbol: str) -> pd.DataFrame:
         """Get real-time market data from Interactive Brokers.

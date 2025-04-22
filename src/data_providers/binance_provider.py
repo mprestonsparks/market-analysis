@@ -5,8 +5,7 @@ import pandas as pd
 import asyncio
 from datetime import datetime
 from typing import Optional, Dict, Any
-from binance.client import Client
-from binance.exceptions import BinanceAPIException
+from binance import Client, BinanceAPIException
 
 from .base_provider import MarketDataProvider
 

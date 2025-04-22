@@ -16,8 +16,11 @@ RUN pip install --no-cache-dir -r /app/requirements-core.txt
 COPY requirements/requirements-ibrokers.txt /app/requirements-ibrokers.txt
 RUN pip install --no-cache-dir -r /app/requirements-ibrokers.txt
 
-# Copy project source code
-COPY src/ /app/src
+# Copy all project files for editable install
+COPY . /app
+
+# Install market-analysis package in editable mode
+RUN pip install --no-cache-dir -e .
 
 # Set Python path
 ENV PYTHONPATH=/app/src:$PYTHONPATH

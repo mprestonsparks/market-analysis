@@ -94,13 +94,14 @@ def fetch_market_data(symbol: str, start_date: datetime, end_date: datetime, tes
 class MarketAnalyzer:
     """Main class for market analysis functionality."""
     
-    def __init__(self, symbol: str, indicator_config: Dict = None, test_mode: bool = False):
+    def __init__(self, symbol: str, indicator_config: Dict = None, test_mode: bool = False, provider=None):
         """Initialize MarketAnalyzer.
         
         Args:
             symbol: Market symbol to analyze
             indicator_config: Optional custom indicator configuration
             test_mode: If True, use test data instead of real market data
+            provider: Optional MarketDataProvider instance (default: yfinance)
         """
         self.symbol = symbol
         self.data = None
@@ -111,6 +112,12 @@ class MarketAnalyzer:
         self.state_description = None
         self.state_characteristics = None
         self.test_mode = test_mode
+        if provider is None:
+            from src.data_providers import provider_factory
+            self.provider = provider_factory()
+        else:
+            self.provider = provider
+
         
     def get_state_adjusted_config(self):
         """
@@ -648,8 +655,8 @@ class MarketAnalyzer:
         }
         return data.rename(columns=column_map)
 
-    def fetch_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-        """Fetch market data for analysis.
+    async def fetch_data(self, start_date: datetime, end_date: datetime) -> pd.DataFrame:
+        """Fetch market data for analysis using the configured provider.
         
         Args:
             start_date: Start date for data fetch
@@ -659,7 +666,7 @@ class MarketAnalyzer:
             DataFrame with market data
         """
         try:
-            data = fetch_market_data(self.symbol, start_date, end_date, self.test_mode)
+            data = await self.provider.fetch_data(self.symbol, start_date, end_date)
             if data is None or len(data) == 0:
                 raise ValueError(f"No data available for {self.symbol}")
             

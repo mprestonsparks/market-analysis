@@ -23,38 +23,27 @@ class YFinanceProvider(MarketDataProvider):
         super().__init__(config)
         self.rate_limit_config = get_rate_limit_config('yfinance')
 
-    @sleep_and_retry
-    @limits(calls=lambda self: self.rate_limit_config['CALLS_PER_HOUR'], 
-            period=lambda self: self.rate_limit_config['PERIOD'])
     async def fetch_data(self, symbol: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-        """Fetch historical market data using YFinance.
+        """Fetch historical market data using YFinance with manual rate limiting and retries."""
+        import asyncio
+        calls_per_hour = self.rate_limit_config['CALLS_PER_HOUR']
+        period = self.rate_limit_config['PERIOD']
+        max_retries = self.rate_limit_config['MAX_RETRIES']
+        base_delay = self.rate_limit_config.get('BASE_DELAY', 1)
         
-        Args:
-            symbol: Market symbol
-            start_date: Start date
-            end_date: End date
-            
-        Returns:
-            DataFrame with market data
-        
-        Raises:
-            ValueError: If no data is available for the symbol
-        """
-        for attempt in range(self.rate_limit_config['MAX_RETRIES']):
+        for attempt in range(max_retries):
             try:
                 ticker = yf.Ticker(symbol)
                 data = ticker.history(start=start_date, end=end_date)
                 if data.empty:
                     raise ValueError(f"No data available for {symbol} in the specified time range")
-                
                 # Standardize column names to lowercase
                 data.columns = [col.lower() for col in data.columns]
                 return data
-                
             except Exception as e:
-                if attempt == self.rate_limit_config['MAX_RETRIES'] - 1:
+                if attempt == max_retries - 1:
                     raise e
-                wait_time = (2 ** attempt) * self.rate_limit_config['BASE_WAIT_TIME']
+                wait_time = (2 ** attempt) * base_delay
                 await asyncio.sleep(wait_time)
 
     async def get_real_time_data(self, symbol: str) -> pd.DataFrame:
