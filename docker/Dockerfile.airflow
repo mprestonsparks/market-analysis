@@ -27,3 +27,4 @@ ENV PYTHONPATH=/app/src:$PYTHONPATH
 
 # Default entrypoint for Python execution
 ENTRYPOINT ["python"]
+CMD ["-m", "src.main", "--help"]
