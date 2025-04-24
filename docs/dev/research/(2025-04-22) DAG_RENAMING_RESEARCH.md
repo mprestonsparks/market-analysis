@@ -1,6 +1,8 @@
-I’ll analyze the data models, API patterns, and operational concerns across major trading and crypto providers like IBKR, Binance, Coinbase, Alpaca, and others. Then I’ll propose a unified DAG file and folder structure that scales cleanly across ingestion, execution, transformation, and analytics, taking into account asset types, provider distinctions, and common workflow patterns.
-
-I’ll let you know once the restructuring proposal is ready.
+---
+**STATUS UPDATE (2025-04-24):** This research note remains **RELEVANT**. 
+- The recommended **Function-First** DAG organization (`dags/ingestion/`, `dags/execution/`, etc.) is a strong candidate for improving scalability and clarity.
+- **Current Status:** As of 2025-04-24, the `airflow-hub` repository uses a **Project-First** structure (`dags/market-analysis/`, `dags/project_analytics/`). Implementing the Function-First structure is a pending decision point (see `airflow-hub/(2025-04-24) TO-DO.md`).
+---
 
 # Restructuring DAG Naming and Organization for Multi-Provider Trading Workflows
 
@@ -262,7 +264,7 @@ dags/
 ├── transformation/
 │   ├── equities_data_normalization.py    # Normalize equity data from IBKR/Alpaca into common format
 │   ├── crypto_data_aggregation.py        # Aggregate and clean crypto data from Binance/Coinbase/etc.
-│   ├── ibkr_account_reports.py           # Transform IBKR account statements into usable data
+│   ├── ibkr_account_sync.py           # Transform IBKR account statements into usable data
 │   ├── portfolio_positions_merge.py      # Combine positions from all providers into one view
 │   └── ... (others as needed)
 └── analytics/

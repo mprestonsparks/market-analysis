@@ -1,3 +1,9 @@
+---
+**STATUS UPDATE (2025-04-24):** This research note is **OUTDATED**. 
+- **Credentials:** We are now using Airflow **Variables** populated via `docker-compose.yml` from an `.env` file, not Airflow Connections or direct environment variables as suggested here.
+- **Dockerfile:** The `market-analysis` project does not use a specific `docker/Dockerfile.airflow`. The standard Docker image `market-analysis:latest` is used by the `DockerOperator`.
+---
+
 # Airflow Integration for Market Analysis
 
 This document summarizes how to integrate the market-analysis project with the Airflow monorepo.
