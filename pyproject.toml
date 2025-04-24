@@ -28,5 +28,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["market_analysis"]
-package-dir = {"" = "src"}
+packages = []

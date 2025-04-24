@@ -98,6 +98,18 @@ docker build -t market-analysis .
 docker run -v $(pwd):/app market-analysis --symbol AAPL --days 365
 ```
 
+## Airflow Integration
+
+This tool is designed to be run as a task within Apache Airflow, typically using the `DockerOperator`. When running via Airflow:
+
+- The Docker image (`market-analysis:latest` or as tagged) should be available to the Airflow environment.
+- The necessary API credentials must be passed as environment variables to the Docker container managed by the `DockerOperator`.
+- Specifically, the container expects the following environment variables to be set:
+  - `BINANCE_API_KEY`: Your Binance API key.
+  - `BINANCE_SECRET_KEY`: Your Binance secret key.
+
+Refer to your Airflow project's documentation (`airflow-hub` in this case) for details on how to securely manage and provide these secrets to the Airflow tasks.
+
 ## Examples
 
 Check out the `examples` directory for sample scripts demonstrating various analysis scenarios.
@@ -109,13 +121,6 @@ Check out the `examples` directory for sample scripts demonstrating various anal
 -- [API Reference](docs/api_reference.md) - Detailed documentation of the REST API endpoints and usage
 -- [State-Aware Trading](docs/state_aware_trading.md) - Technical details of the state-aware trading system
 -- [Developer Guide](docs/dev/README.md) - Guide for developers contributing to the project
-
-## Airflow Integration
-For integration with Apache Airflow, refer to [AIRFLOW_INTEGRATION.md](AIRFLOW_INTEGRATION.md). This document covers:
-- Docker image build and tag (`market-analysis:latest`)
-- Required Airflow connections (`market_analysis_ibkr`, `market_analysis_binance`)
-- DAG location (`dags/market-analysis/dag_market_analysis_ingestion.py`)
-- Example `DockerOperator` configuration
 
 ## API & Library Usage
 
@@ -221,8 +226,6 @@ Or use Docker Compose for an isolated test environment:
 ```bash
 docker-compose up --build --abort-on-container-exit --exit-code-from test test
 ```
-
-<!-- Airflow Integration details are provided above under Documentation -->
 
 ## License
 

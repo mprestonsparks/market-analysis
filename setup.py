@@ -21,8 +21,8 @@ all_requires = ibrokers_requires + binance_requires
 setup(
     name="market-analysis",
     version="0.1.0",
-    packages=find_namespace_packages(include=['src.*']),
-    package_dir={"": "."},
+    packages=find_namespace_packages(include=['*']),
+    package_dir={"": "src"},
     install_requires=install_requires,
     extras_require={
         "ibrokers": ibrokers_requires,
