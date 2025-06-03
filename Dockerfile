@@ -33,11 +33,12 @@ ENV PYTHONPATH=/app/src:$PYTHONPATH
 VOLUME /app
 
 # Environment variables for API
-ENV API_PORT=8000
+ARG API_PORT
+ENV API_PORT=${API_PORT}
 ENV API_HOST=0.0.0.0
 
 # Expose API port
-EXPOSE 8000
+EXPOSE ${API_PORT}
 
 # Set the default command to run the API server
 CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

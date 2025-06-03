@@ -2,11 +2,15 @@ version: '3.8'
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      args:
+        - API_PORT=${MARKET_API_PORT}
+    platform: "${DOCKER_DEFAULT_PLATFORM}"
     ports:
-      - "8000:8000"
+      - "${MARKET_API_PORT}:8000"
     environment:
-      - API_PORT=8000
+      - API_PORT=${MARKET_API_PORT}
       - API_HOST=0.0.0.0
       - PYTHONPATH=/app
     volumes:
@@ -16,7 +20,8 @@ services:
       - market_analysis_net
 
   test:
-    build: .
+    build:
+      context: .
     environment:
       - PYTHONPATH=/app
     volumes:
